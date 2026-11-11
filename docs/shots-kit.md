@@ -1,7 +1,10 @@
 # shots-kit: the pictures
 
-A website's pictures of a macOS app, kept current without anyone looking at them, and every
-image, GIF and video listed with the window it shows (#6). It's the pictures part of
+A project's pictures of its macOS app, on its website or only in its README, kept current
+without anyone looking at them, and every image, GIF and video listed with the window it
+shows (#6). It gets them one of two ways: from **the installed app**, whose windows it opens
+and reads on the screen (NetworkMonitor), or **drawn by the project itself**, out of sight,
+from made-up data (claude-profiles-mac, #8). It's the pictures part of
 [product-kit](../README.md): `shots-kit` on PATH, or `product-kit shots …`. It grew out of
 NetworkMonitor's `site-shots` (NetworkMonitor#329 and after), and NetworkMonitor's
 `docs/development.md#website-pictures` has the whole story of how it reads a window.
@@ -26,6 +29,41 @@ Videos and staged pictures aren't taken by the tool: they're listed with the win
 and the app version they were **made** from, and **flagged** for remaking by hand when one of
 those windows changes.
 
+## Pictures the project draws itself
+
+Some apps can draw their own windows into image files: a debug command that renders a view
+from a file of made-up data, with no window on any screen. claude-profiles-mac's
+`--snapshot-panel <fixture.json> <dir>` draws its dropdown that way. Then the manifest's
+**`render`** says how: a command that builds the app, and one that draws every picture into a
+folder (`{out}`). Each shot names its `file` and the drawing it comes from (`render`).
+
+- `check` builds, draws, and compares each drawing with its picture, pixel by pixel (a
+  picture saved differently with the same pixels is the same). A pixel that differs is a
+  change, so the drawing has to be **the same every run**: its data, its clock and its settings
+  fixed, in the project. It names what's made by hand from a shot that changed, as above.
+- `update` copies the drawings that differ over their pictures.
+- No app is opened, nothing appears on the screen, no Mac lane is taken, and no permission is
+  needed, so it runs anywhere, any time. The drawing has to stay **out of sight**: no window on
+  any screen, no Dock icon. That's the project's job.
+- `tree`, `record`, `audit`, `--look` and `--language` are for an app's windows, not drawings.
+
+```json
+{
+  "render": {
+    "build": ["./build.sh"],
+    "command": ["env", "TZ=UTC", "build/App.app/Contents/MacOS/App", "--snapshot", "shots/demo.json", "{out}"]
+  },
+  "shots": [{"name": "dropdown", "file": "docs/images/dropdown.png", "render": "panel-dark.png"}],
+  "assets": [{"file": "docs/images/logo.png", "none": "the app's icon"}]
+}
+```
+
+## Without a website
+
+With no `shots.site` (and no `--site`), `shots/shots.json` is in the project's own checkout
+and its files are the repo's. `coverage` then checks the README's and the docs' assets against
+that one list: `shots.repo_assets` isn't used.
+
 ## Commands
 
 | Command | Does |
@@ -38,7 +76,7 @@ those windows changes.
 | `readme` | Copies the site's pictures the README uses into it, in every language. Files only. |
 | `coverage` | **The asset check**: every image, GIF and video the site, the README and the docs use is a shot's picture or listed, with the windows it shows (`shows` and `made`) or why it shows none (`none`). Files only, so it runs in CI. |
 | `coverage-test` | Where `coverage` looks for media, on made-up pages. |
-| `vendor [--check]` | Copies the tool's source into the project (`shots.vendor`), so its CI can build it without the plugin. |
+| `vendor [--check]` | Copies the tool's source into the project (`shots.vendor`), so its CI can build it without the plugin, with `AccessibilityAudit.swift` beside it unless the project has its own (`shots.audit`). |
 | `version` | |
 
 Options: `--site DIR` (the site's checkout), `--repo DIR` (the project's; the checkout this
@@ -62,8 +100,8 @@ back running if it was, with its windows where they were.
 
 | Key | Meaning |
 |---|---|
-| `shots.site` | The site's checkout, from the project's main checkout, so it's the same from any worktree: `../NetworkMonitor-site`. Without it, give `--site`. |
-| `shots.repo_assets` | The README's and the docs' list of their assets (`assets.json`). |
+| `shots.site` | The site's checkout, from the project's main checkout, so it's the same from any worktree: `../NetworkMonitor-site`. Without it (or `--site`), the manifest is the project's own. |
+| `shots.repo_assets` | The README's and the docs' list of their assets (`assets.json`), when there's a site. |
 | `shots.lane` | The app's Mac lane (its bundle id's last part, lowercased). |
 | `shots.launch.background` | Launch arguments that open the app's windows behind the others without activating it, for commands that only read trees: `["-background", "YES"]`. The app has to support them. |
 | `shots.launch.language` | Launch arguments that show the app in a language, `{code}` for its code (`["-AppleLanguages", "({code})"]`). |
@@ -75,11 +113,12 @@ back running if it was, with its windows where they were.
 
 ## `shots/shots.json`
 
-On the site. NetworkMonitor's (on its `gh-pages`) is the full example.
+On the site, or in the project's checkout when it has none. NetworkMonitor's (on its `gh-pages`) is the full example of an app's windows; claude-profiles-mac's (on `main`) of drawings.
 
 | Key | Meaning |
 |---|---|
-| `app`, `bundle` | The installed app and its bundle id. |
+| `app`, `bundle` | The installed app and its bundle id. Not with `render`. |
+| `render` | Pictures the project draws itself: `build` and `command`, `{out}` for the folder. Its shots have only `name`, `file` and `render`. |
 | `shots` | One per picture or checked window: `name`, `file` (the picture, from the site's root; none for a window only checked), `open` (launch arguments), `window` (its title, or an element such as `AXPopover`), `click`, `scroll`, `waitFor`, `when` (taken only when that shot's window changed: a costly one), `skipIf`, `ignore`, `data` (regions that are data: `from`, `until`, `skip`, `optional`), `crop`, `areas` (clickable areas on the page: `match`, `element`, `parent`, `pad`, `h`), `always`. |
 | `assets` | Every other image, GIF and video the site uses: `file`, and `shows` (shots) with `made` (the app version), or `none` (why it shows no window), and `stale` (the issue its remake waits on). |
 | `languages` | Other languages the site has a page in: `code`, `page`, `assets` (its pictures' folder), `specs` (labels the app's table can't translate). Each shot is taken again in each. |
@@ -87,6 +126,10 @@ On the site. NetworkMonitor's (on its `gh-pages`) is the full example.
 An element is written `Role:label`, `Role:~part of a label` or `Outer>Inner`.
 
 ## A new project
+
+Pictures the project draws (no app to open, no screen): `shots/shots.json` with `render`, its
+drawings made the same every run, `shots-kit check` until every picture is as drawn, then
+`shots-kit vendor` and `coverage` in CI. Otherwise:
 
 1. A `shots` section in `.product-kit.json`, and `shots/shots.json` on the site with a shot
    for each picture (`shots-kit tree <name>` prints what a window reads as, for its `data`).
@@ -99,11 +142,12 @@ An element is written `Role:label`, `Role:~part of a label` or `Outer>Inner`.
 ## Tests
 
 `tests/test-shots-kit.sh`, run by `tests/run.sh`: it builds, runs `coverage-test`, and checks
-the asset check, the config and vendoring on a made-up project and site. What needs an app and
-the screen is checked against NetworkMonitor's pictures when the tool changes.
+the asset check, the config and vendoring on a made-up project and site, and `check` and
+`update` on a made-up project that draws its own pictures. What needs an app and the screen is
+checked against NetworkMonitor's pictures when the tool changes.
 
 ## Not yet
 
-macOS apps only, and one Swift file holding both what's the same everywhere (the manifest, the
+macOS apps only (a project's own drawings could be anything's), and one Swift file holding both what's the same everywhere (the manifest, the
 asset check, the diffs, the page) and what's macOS's (the Accessibility API, ScreenCaptureKit,
 launching). They separate when a second platform comes (web pages, Windows apps: #1, step 5).

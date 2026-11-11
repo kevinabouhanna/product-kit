@@ -2,7 +2,8 @@
 #
 # shots-kit (#6), offline: it builds, its own cases of where the asset check looks for
 # media pass, and the check, the config and vendoring work on a made-up project and
-# site. What needs an app and the screen (check, update, audit) isn't run here.
+# site; and on a made-up project with no site that draws its own pictures (#8),
+# check and update too. What needs an app and the screen isn't run here.
 # Usage: tests/test-shots-kit.sh
 
 set -uo pipefail
@@ -52,11 +53,70 @@ expect "the README's list is the config's repo_assets" 'grep -q "docs/new.png (R
 expect "problems are grouped by the config's branches" 'grep -q "^On main (the README, the docs and docs/assets.json)" <<<"$out"'
 expect "--site overrides the config" '(cd "$TMP" && sk coverage --site "$SITE" --repo "$APP") | grep -q "isn.t listed"'
 
+echo "--- a project with no site, whose app draws its own pictures (#8)"
+DP="$TMP/drawn"
+mkdir -p "$DP/docs" "$DP/shots" "$DP/v/old" "$DP/v/new"
+git -C "$DP" init -q
+echo '{"repo": "me/drawn"}' >"$DP/.product-kit.json"
+# A 4×4 PNG of one colour, with a pixel of another, at a compression level.
+png() { python3 -I -c 'import sys, zlib, struct
+path, rgb, odd, level = sys.argv[1], bytes.fromhex(sys.argv[2]), bytes.fromhex(sys.argv[3]), int(sys.argv[4])
+rows = b"".join(b"\0" + b"".join((odd if (x, y) == (1, 1) else rgb) + b"\xff" for x in range(4)) for y in range(4))
+chunk = lambda kind, data: struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+open(path, "wb").write(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 4, 4, 8, 6, 0, 0, 0))
+    + chunk(b"IDAT", zlib.compress(rows, level)) + chunk(b"IEND", b""))' "$@"; }
+png "$DP/v/old/main.png" 336699 336699 9; png "$DP/v/old/other.png" ffffff ffffff 9
+png "$DP/v/new/main.png" 336699 ff0000 9; png "$DP/v/new/other.png" ffffff ffffff 1
+cp "$DP/v/old/main.png" "$DP/docs/main.png"; cp "$DP/v/old/other.png" "$DP/docs/other.png"; : >"$DP/docs/logo.png"
+echo old >"$DP/v/which"
+printf '![Main](docs/main.png) ![Other](docs/other.png) ![Logo](docs/logo.png)\n' >"$DP/README.md"
+echo 'echo built >built.txt' >"$DP/build.sh"
+echo 'cp v/$(cat v/which)/*.png "$1"/' >"$DP/draw.sh"
+cat >"$DP/shots/shots.json" <<'EOF2'
+{"render": {"build": ["sh", "build.sh"], "command": ["sh", "draw.sh", "{out}"]},
+ "shots": [{"name": "main", "file": "docs/main.png", "render": "main.png"},
+           {"name": "other", "file": "docs/other.png", "render": "other.png"}],
+ "assets": [{"file": "docs/logo.png", "none": "the icon"}]}
+EOF2
+expect "coverage: the README's pictures are the repo's manifest's" '(cd "$DP" && "$KIT" coverage) | grep -q "3 assets in the README and docs, all accounted for"'
+: >"$DP/docs/new.png"; echo '![New](docs/new.png)' >>"$DP/README.md"
+out="$(cd "$DP" && sk coverage)"
+expect "coverage: an unlisted one goes in shots/shots.json, on main" 'grep -q "docs/new.png (README.md) isn.t listed. Add it to shots/shots.json" <<<"$out" && grep -q "^On main (the README, the docs and shots/shots.json)" <<<"$out"'
+sed -i '' '$d' "$DP/README.md"; rm "$DP/docs/new.png"
+out="$(cd "$DP" && sk check)"; status=$(cd "$DP" && "$KIT" check >/dev/null 2>&1; echo $?)
+expect "check builds, draws, and finds every picture as drawn" '[ -f "$DP/built.txt" ] && grep -q "check: all 2 pictures are as drawn" <<<"$out" && [ "$status" = 0 ]'
+echo new >"$DP/v/which"
+cat >"$DP/shots/shots.json" <<'EOF2'
+{"render": {"build": ["sh", "build.sh"], "command": ["sh", "draw.sh", "{out}"]},
+ "shots": [{"name": "main", "file": "docs/main.png", "render": "main.png"},
+           {"name": "other", "file": "docs/other.png", "render": "other.png"}],
+ "assets": [{"file": "docs/logo.png", "none": "the icon"}, {"file": "docs/tour.gif", "shows": ["main"], "made": "1.0"}]}
+EOF2
+out="$(cd "$DP" && sk check)"; status=$(cd "$DP" && "$KIT" check >/dev/null 2>&1; echo $?)
+expect "a pixel that differs is a change, and fails the check" 'grep -q "main: changed: 1 pixels differ, within 1×1 at (1, 1) of 4×4" <<<"$out" && [ "$status" = 1 ]'
+expect "the same pixels, written differently, aren't" 'grep -q "^other: unchanged" <<<"$out"'
+expect "what's made by hand from a changed window is named" 'grep -q "docs/tour.gif (shows main)" <<<"$out"'
+out="$(cd "$DP" && sk update)"
+expect "update copies the drawing over the picture" 'grep -q "update: redrew 1 of 2" <<<"$out" && cmp -s "$DP/v/new/main.png" "$DP/docs/main.png"'
+expect "then the check passes" '(cd "$DP" && "$KIT" check >/dev/null 2>&1)'
+expect "a name that's no shot is refused" '(cd "$DP" && sk check nothing) | grep -q "no shot named nothing"'
+expect "tree is for an app's windows only" '(cd "$DP" && sk tree main) | grep -q "not for pictures the project draws itself"'
+echo 'exit 3' >"$DP/draw.sh"
+out="$(cd "$DP" && sk check)"; status=$(cd "$DP" && "$KIT" check >/dev/null 2>&1; echo $?)
+expect "a drawing that fails says so" 'grep -q "the drawing failed (exit 3)" <<<"$out" && [ "$status" = 2 ]'
+echo ': "$1"' >"$DP/draw.sh"
+expect "a drawing it didn't make is named" '(cd "$DP" && sk check) | grep -q "main: the drawing made no main.png"'
+rm "$DP/shots/shots.json"
+expect "no manifest and no site: it says where to put one" '(cd "$DP" && sk coverage) | grep -q "put it in the project.s checkout"'
+
 echo "--- vendor"
 expect "vendor copies the source to Scripts/shots-kit.swift" '(cd "$APP" && "$KIT" vendor >/dev/null) && cmp -s "$APP/Scripts/shots-kit.swift" "$(dirname "$KIT")/../shots/shots-kit.swift"'
 expect "vendor --check says it's this copy" '(cd "$APP" && "$KIT" vendor --check) | grep -q "is this copy"'
 echo "// changed" >>"$APP/Scripts/shots-kit.swift"
 expect "vendor --check fails on another copy" '! (cd "$APP" && "$KIT" vendor --check >/dev/null)'
+expect "without its own rules, the project gets product-kit's beside the tool" 'cmp -s "$APP/Scripts/AccessibilityAudit.swift" "$(dirname "$KIT")/../shots/AccessibilityAudit.swift"'
+(cd "$APP" && "$KIT" vendor >/dev/null); echo "// changed" >>"$APP/Scripts/AccessibilityAudit.swift"
+expect "vendor --check fails on another copy of the rules" '(cd "$APP" && sk vendor --check) | grep -q "AccessibilityAudit.swift isn.t this copy"'
 
 [ "$fails" -eq 0 ] && echo "shots-kit: every test passed" || echo "shots-kit: $fails failed"
 exit $((fails > 0))
