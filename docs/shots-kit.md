@@ -81,18 +81,43 @@ that one list: `shots.repo_assets` isn't used.
 
 Options: `--site DIR` (the site's checkout), `--repo DIR` (the project's; the checkout this
 runs in by default), `--app PATH` (another copy of the app, such as a development build),
-`--language CODE` (one language only), `--wait-away MINUTES` (wait, silently and with the
-lanes free, for the Mac to be idle, for the shots that need the real screen).
+`--language CODE` (one language only), `--vm` and `--here` (in a VM, or on this Mac's screen;
+below), `--wait-away MINUTES` (wait, silently and with the lanes free, for the Mac to be idle,
+for the shots that need the real screen).
 
 ## Sharing the Mac
 
-It needs Accessibility and Screen Recording for the terminal it runs in, and a Retina screen.
+On this Mac (not `--vm`), it needs Accessibility and Screen Recording for the terminal it runs in, and a Retina screen.
 It takes the app's Mac lane and `screen` (`mac-lane`, from the shared-mac plugin) only while it
 reads or takes windows. Reading a tree needs no focus; a picture, a look or a real click needs
 the window in front, which happens only while the Mac is idle (`MAC_LANE_IDLE`, 90 s by
 default). Otherwise those shots are reported as **not taken**, and why; nobody is ever asked to
 step away. It quits and relaunches the app, and however the run ends puts the installed copy
 back running if it was, with its windows where they were.
+
+## In a VM
+
+`--vm` (or `shots.vm.default` in the config, unless `--here`) takes the pictures in a
+throwaway macOS VM rather than on this Mac's screen (#10): `mac-vm`, from the shared-mac
+plugin. The VM has its own screen, pointer and focus, so nothing shows on the person's screens,
+no shot waits for the Mac to be idle or is reported as not taken, real clicks are fine, and
+this Mac's copy of the app is never quit. `check`, `update`, `record`, `tree` and `audit` go
+there; the commands that read files stay here.
+
+1. Into a shared folder go the tool itself, the app (the manifest's, or `--app`; zipped, as a
+   bundle's links don't survive the shared folder), a copy of the project's and the site's files
+   (what git tracks), and `vm.files`.
+2. `mac-vm run --display <vm.display>` boots a clone of the golden image with that screen.
+   Inside, the app is installed where the manifest says, `vm.files` go to the same place,
+   `vm.setup` runs from the project's copy, then the same command, which takes the VM's screen
+   whenever it needs it.
+3. Each file the run changed or added comes back to the site and the project. Nothing else is
+   touched, so a change made here meanwhile stays.
+
+The VM is a fresh Mac: none of this Mac's data, settings, accounts or apps unless `vm.files`
+and `vm.setup` put them there, and its own wallpaper and scale. A project switching to it
+compares a run's pictures with its current ones first. It takes no Mac lane; `mac-vm` holds
+one of the two VM lanes. One VM run per site at a time.
 
 ## `.product-kit.json`
 
@@ -108,6 +133,10 @@ back running if it was, with its windows where they were.
 | `shots.strings` | The app's table for a language in its bundle, for naming elements in that language (`Contents/Resources/{code}.lproj/Localizable.strings`). |
 | `shots.audit` | The project's own `AccessibilityAudit.swift` to build with, so `audit` uses the rules its tests do; product-kit's copy otherwise. |
 | `shots.vendor` | Where `vendor` copies the source (`Scripts/shots-kit.swift`). |
+| `shots.vm.default` | `true`: run in a VM unless `--here` (#10). |
+| `shots.vm.display` | The VM's screen in pixels, shown at 2x: `3200x2000` (1600×1000 points, the default), big enough for the app's windows. |
+| `shots.vm.files` | Files and folders of this Mac copied to the same place in the VM before the app opens (`~` the home folder): the app's data and settings, for pictures that show them. |
+| `shots.vm.setup` | A command run in the VM from the project's copy, after the app is installed (`$SHOTS_APP`) and before any picture: the app's first-run state. |
 | `shots.branches` | `{"site": "gh-pages", "repo": "main"}`: the branches the asset check's report names. |
 | `site.url` | The site's address: links to `assets/…` written with it (a social card's `<meta>`) are the site's. |
 
@@ -142,8 +171,9 @@ drawings made the same every run, `shots-kit check` until every picture is as dr
 ## Tests
 
 `tests/test-shots-kit.sh`, run by `tests/run.sh`: it builds, runs `coverage-test`, and checks
-the asset check, the config and vendoring on a made-up project and site, and `check` and
-`update` on a made-up project that draws its own pictures. What needs an app and the screen is
+the asset check, the config and vendoring on a made-up project and site, `check` and
+`update` on a made-up project that draws its own pictures, and a run in a VM with a stand-in
+for `mac-vm` (what goes in, what comes back, the config). What needs an app and the screen is
 checked against NetworkMonitor's pictures when the tool changes.
 
 ## Not yet

@@ -22,7 +22,7 @@ through without asking. What's particular here:
   tests cover). Its tests cover what reads files; a change to how it reads,
   takes or masks windows is checked by running `check` against NetworkMonitor's app before and
   after, and comparing. Never on Kevin's screen while he works (claude-parallel-sessions#62):
-  in a VM (`mac-vm run`, the shared-mac skill), or behind the silent idle gate
+  in a VM (`shots-kit check --vm`, #10; `mac-vm run`, the shared-mac skill), or behind the silent idle gate
   (`MAC_LANE=screen MAC_LANE_IDLE=90 mac-lane …`), telling the other sessions first.
 - **Generic, never one project's.** What's particular to a project goes in its config
   (`.product-kit.json`), never in the code. NetworkMonitor is the first user; each part is
