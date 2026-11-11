@@ -1297,8 +1297,10 @@ struct Session {
     func look(_ window: AXUIElement, _ shot: Shot) async throws -> (look: Look, picture: CGImage, masks: [CGRect]) {
         place(window)
         var picture = try await picture(window, crop: shot.crop)
-        for _ in 0..<4 where shot.crop == nil && !isActive(picture.image, window: window) {
+        for attempt in 0..<8 where shot.crop == nil && !isActive(picture.image, window: window) {
             try bringForward(window)
+            // Longer each time: something else can hold the front for a few seconds.
+            if attempt >= 3 { usleep(UInt32(attempt) * 400_000) }
             picture = try await self.picture(window, crop: shot.crop)
         }
         let masks = maskedFrames(window, shot).map { f in
@@ -2762,7 +2764,12 @@ struct ShotsKit {
                 let taken = try await session.look(window, shot)
                 let image = taken.picture
                 // A crop leaves out the traffic lights that tell.
-                if shot.crop == nil && !isActive(image, window: window) { print("  warning: \(file) shows the window inactive") }
+                if shot.crop == nil && !isActive(image, window: window) {
+                    // What had the front instead, to find what takes it.
+                    let front = NSWorkspace.shared.frontmostApplication
+                    print("  warning: \(file) shows the window inactive; in front: "
+                          + "\(front?.localizedName ?? "nothing") (\(front?.bundleIdentifier ?? "?"))")
+                }
                 try writePNG(image, to: site.appendingPathComponent(file))
                 try taken.look.text.write(to: lookFile, atomically: true, encoding: .utf8)
                 page.setSize(of: file, pixels: CGSize(width: image.width, height: image.height))
