@@ -1,6 +1,6 @@
 {
   "name": "product-kit",
-  "description": "Everything a product shows people, kept current and in every language: docs (docs-kit), and next its pictures, videos and translations, for the README, the wiki and the website.",
+  "description": "Everything a product shows people, kept current and in every language: docs (docs-kit) and translations (lang-kit), and next its pictures and videos, for the README, the wiki and the website.",
   "author": { "name": "Kevin Abou Hanna" },
   "repository": "https://github.com/kevinabouhanna/product-kit",
   "license": "UNLICENSED",

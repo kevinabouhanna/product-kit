@@ -1,6 +1,6 @@
 ---
 name: docs-kit
-description: How a project's docs work when it has a .docs-kit.json - docs/ in the repository is the one source, and the website's docs pages and the GitHub wiki are built from it, never edited. Use when a change adds or changes what an app says or does (docs-check asks for the docs in the same pull request), when writing or moving a docs page or heading, when publishing the website's docs (with a release), when linking from an app into its docs, or when setting docs up in a new project.
+description: How a project's docs work when it has a .product-kit.json (or .docs-kit.json) - docs/ in the repository is the one source, and the website's docs pages and the GitHub wiki are built from it, never edited. Use when a change adds or changes what an app says or does (docs-check asks for the docs in the same pull request), when writing or moving a docs page or heading, when publishing the website's docs (with a release), when linking from an app into its docs, or when setting docs up in a new project.
 ---
 
 # docs-kit: one source for the docs
@@ -9,7 +9,7 @@ description: How a project's docs work when it has a .docs-kit.json - docs/ in t
 **built** from it by `docs-kit` (on PATH from this plugin; each project keeps a copy at
 `Scripts/docs-kit`). Never edit a built page: change `docs/` and rebuild.
 
-What's particular to a project is in its `.docs-kit.json` at the top of the repository. Its
+What's particular to a project is in its `.product-kit.json` (`.docs-kit.json` before product-kit) at the top of the repository. Its
 own CLAUDE.md says when its site is rebuilt and which make targets wrap these commands.
 
 ## The docs change with the feature
@@ -63,7 +63,7 @@ whether the copy is behind. Update the copy in its own pull request.
 
 ## A new project
 
-1. `docs-kit init` writes a starting `.docs-kit.json`. Fill in:
+1. `docs-kit init` writes a starting `.product-kit.json`. Fill in:
    - `check.needs_docs`: `[{"paths": [globs], "except": [globs], "lines": "regex"}]`, the
      files (and, optionally, the changed lines) that change what users see;
    - `developer_pages`, `extra_pages` (pages outside `docs/`, such as `SECURITY.md`, with

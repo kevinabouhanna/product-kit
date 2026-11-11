@@ -176,6 +176,11 @@ echo "--- the rest"
 expect "-C runs in another folder" '(cd "$TMP" && "$KIT" -C "$P" anchors >/dev/null)'
 expect "help lists the commands" '"$KIT" help | grep -q "docs-kit site"'
 expect "outside a project it says what's missing" '(cd "$TMP" && mkdir -p bare && cd bare && git init -q && ! "$KIT" anchors 2>&1 | grep -q Traceback)'
+mv .docs-kit.json .product-kit.json
+echo '{}' >.docs-kit.json
+expect ".product-kit.json is read first, shared with lang-kit" '"$KIT" anchors >/dev/null'
+rm .docs-kit.json
+expect "init writes .product-kit.json" '(cd "$TMP/bare" && "$KIT" init >/dev/null && [ -f .product-kit.json ])'
 
 [ "$fails" -eq 0 ] && echo "docs-kit: every test passed" || echo "docs-kit: $fails failed"
 exit $((fails > 0))

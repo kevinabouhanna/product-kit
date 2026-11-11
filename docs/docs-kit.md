@@ -33,10 +33,14 @@ poor one; the website is a build output. (NetworkMonitor#334 has the whole decis
 | `docs-kit wiki <wiki checkout> [commit]` | The wiki: every page, Home, the sidebar and the footer; removes pages whose doc is gone. |
 | `docs-kit anchors` | Every page the site publishes, with its address and anchors, as JSON. |
 | `docs-kit vendor [--check]` | Copies this file to the project's `Scripts/docs-kit`, or says whether that copy is this one. |
-| `docs-kit init` | Writes a starting `.docs-kit.json`. |
+| `docs-kit init` | Writes a starting `.product-kit.json`. |
 | `docs-kit -C <dir> …` | Runs as if started in `<dir>`, as `git -C` does. |
 
-## `.docs-kit.json`
+## `.product-kit.json`
+
+The config docs-kit shares with [lang-kit](lang-kit.md): one file, one list of languages.
+docs-kit reads `.docs-kit.json` when a project has no `.product-kit.json` yet; renaming it is
+all a project needs to do (`git mv .docs-kit.json .product-kit.json`).
 
 At the top of the repository. NetworkMonitor's is a full example.
 
