@@ -2221,9 +2221,8 @@ enum InVM {
         let fm = FileManager.default
         let caches = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Caches/shots-kit/vm")
         // One VM run per site at a time: two would bring back over each other.
-        let key = SHA256.hash(data: Data(site.standardizedFileURL.path.utf8)).map { String(format: "%02x", $0) }.joined().prefix(12)
-        try? fm.createDirectory(at: caches, withIntermediateDirectories: true)
-        let lock = open(caches.appendingPathComponent("\(key).lock").path, O_CREAT | O_RDWR, 0o644)
+        // The lock is on the site's folder itself, so no lock file is left behind.
+        let lock = open(site.path, O_RDONLY)
         guard lock >= 0, flock(lock, LOCK_EX | LOCK_NB) == 0 else {
             print("shots-kit: another run is taking this site's pictures in a VM; try again once it's done")
             return 2
