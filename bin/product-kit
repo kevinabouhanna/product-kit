@@ -7,20 +7,21 @@
 #                          wiki (docs-kit; `docs-kit …` on PATH is the same)
 #   product-kit lang …     every language held to its glossary, pages with their copies,
 #                          the reviewer's list, a new language (lang-kit; same as `lang-kit …`)
-#   product-kit shots …    pictures and videos (#1, step 3: not yet)
+#   product-kit shots …    the website's pictures of a macOS app kept current, and every
+#                          image, GIF and video listed (shots-kit; same as `shots-kit …`)
 #   product-kit version
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 
-usage() { sed -n '3,11p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '3,12p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+shots_version() { sed -n 's/^let shotsKitVersion = "\(.*\)"$/\1/p' "$here/../shots/shots-kit.swift"; }
 
 case "${1:-help}" in
   docs) shift; exec python3 -I "$here/docs-kit" "$@" ;;
   lang) shift; exec python3 -I "$here/lang-kit" "$@" ;;
-  shots)
-    echo "product-kit: '$1' isn't here yet (kevinabouhanna/product-kit#1)." >&2; exit 2 ;;
+  shots) shift; exec "$here/shots-kit" "$@" ;;
   version|--version)
-    echo "product-kit: docs $(python3 -I "$here/docs-kit" version), lang $(python3 -I "$here/lang-kit" version)" ;;
+    echo "product-kit: docs $(python3 -I "$here/docs-kit" version), lang $(python3 -I "$here/lang-kit" version), shots $(shots_version)" ;;
   help|-h|--help) usage ;;
   *) echo "product-kit: no command '$1'" >&2; usage >&2; exit 2 ;;
 esac

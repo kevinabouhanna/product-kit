@@ -14,7 +14,7 @@ claude plugin install product-kit@kevinabouhanna --scope user
 ```
 
 The plugin is listed in the `kevinabouhanna` marketplace (kevinabouhanna/claude-parallel-sessions).
-It puts `product-kit`, `docs-kit` and `lang-kit` on PATH and gives every session the skill for each
+It puts `product-kit`, `docs-kit`, `lang-kit` and `shots-kit` on PATH and gives every session the skill for each
 part. They share one config, `.product-kit.json`, with the languages listed once.
 
 ## The parts
@@ -23,7 +23,7 @@ part. They share one config, `.product-kit.json`, with the languages listed once
 |---|---|---|
 | `product-kit docs` (`docs-kit`) | `docs/` is the one source; the website's docs pages and the wiki are built from it, and a check asks for docs with the feature. [Reference](docs/docs-kit.md) | ✅ |
 | `product-kit lang` (`lang-kit`) | Every language's table held to the app and to its glossary (Apple `.strings` and `.xcstrings`, JSON, `.resx`, Qt `.ts`); a changed page needs its copy; what each release changed, for the native reviewer; adding a language. [Reference](docs/lang-kit.md) | ✅ |
-| `product-kit shots` | Every picture, GIF and video listed with what it shows; retakes the pictures whose interface changed (macOS, web, Windows); flags the videos | #1, step 3 |
+| `product-kit shots` (`shots-kit`) | Every picture, GIF and video listed with the window it shows; reads each picture's window through the Accessibility API, retakes only those whose interface changed, and flags the videos. [Reference](docs/shots-kit.md) | ✅ macOS apps; web and Windows: #1, step 5 |
 | `product-kit status` | What's out of date for a release, across all of it | #1, step 7 |
 
 ## The order
@@ -40,4 +40,5 @@ Language runs through every step: a translated picture is a capture of the trans
 ## Working on it
 
 `tests/run.sh` runs the tests, offline. Each project keeps a copy of the tools it runs in CI
-(`docs-kit vendor`, `lang-kit vendor`), so its CI needs no plugin. The workflow is in [CLAUDE.md](CLAUDE.md).
+(`docs-kit vendor`, `lang-kit vendor`, `shots-kit vendor`), so its CI needs no plugin.
+`tests/run.sh` builds shots-kit, so it needs Swift (Command Line Tools). The workflow is in [CLAUDE.md](CLAUDE.md).

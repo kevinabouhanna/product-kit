@@ -14,9 +14,15 @@ through without asking. What's particular here:
   then `git branch -D <branch>` and `git push origin --delete <branch>`.
 - **Install on this Mac:** `claude plugin marketplace update kevinabouhanna && claude plugin
   update product-kit@kevinabouhanna`. New sessions pick it up.
-- **Projects keep copies.** A change to a tool a project vendors (`bin/docs-kit`, `bin/lang-kit`
-  → `Scripts/…`) bumps its `VERSION` and is followed by a pull request in each such project with
-  `<tool> vendor` (NetworkMonitor today). It's tooling only there: no app release.
+- **Projects keep copies.** A change to a tool a project vendors (`bin/docs-kit`, `bin/lang-kit`,
+  `shots/shots-kit.swift` → `Scripts/…`) bumps its version (`VERSION`, `shotsKitVersion`) and is
+  followed by a pull request in each such project with `<tool> vendor` (NetworkMonitor today).
+  It's tooling only there: no app release.
+- **shots-kit drives a real app.** Its tests cover what reads files; a change to how it reads,
+  takes or masks windows is checked by running `check` against NetworkMonitor's app before and
+  after, and comparing. Never on Kevin's screen while he works (claude-parallel-sessions#62):
+  in a VM (`mac-vm run`, the shared-mac skill), or behind the silent idle gate
+  (`MAC_LANE=screen MAC_LANE_IDLE=90 mac-lane …`), telling the other sessions first.
 - **Generic, never one project's.** What's particular to a project goes in its config
   (`.product-kit.json`), never in the code. NetworkMonitor is the first user; each part is
   proved on a second project before it's called done.
