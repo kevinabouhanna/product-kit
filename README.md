@@ -1,2 +1,42 @@
 # product-kit
-Everything a product shows people, kept current and in every language: docs, pictures and videos for the README, the wiki and the website. Claude Code plugin.
+
+Everything a product shows people, kept current and in every language: its **docs**, its
+**pictures and videos**, and their **translations**, for the README, the wiki and the website.
+A Claude Code plugin, for any project.
+
+Each grew out of NetworkMonitor, where a feature that changed the interface used to leave stale
+docs, stale screenshots and an untranslated page behind. product-kit makes them one system: one
+config, one list of languages, one manifest of what each picture shows, and one order to do it
+in. The plan is [#1](https://github.com/kevinabouhanna/product-kit/issues/1).
+
+```
+claude plugin install product-kit@kevinabouhanna --scope user
+```
+
+The plugin is listed in the `kevinabouhanna` marketplace (kevinabouhanna/claude-parallel-sessions).
+It puts `product-kit` and `docs-kit` on PATH and gives every session the skill for each part.
+
+## The parts
+
+| Part | Does | State |
+|---|---|---|
+| `product-kit docs` (`docs-kit`) | `docs/` is the one source; the website's docs pages and the wiki are built from it, and a check asks for docs with the feature. [Reference](docs/docs-kit.md) | ✅ |
+| `product-kit lang` | Every language held to its glossary; a changed page needs its copy; what each release changed, for the native reviewer; adding a language | #1, step 2 |
+| `product-kit shots` | Every picture, GIF and video listed with what it shows; retakes the pictures whose interface changed (macOS, web, Windows); flags the videos | #1, step 3 |
+| `product-kit status` | What's out of date for a release, across all of it | #1, step 7 |
+
+## The order
+
+Language runs through every step: a translated picture is a capture of the translated app.
+
+1. **Words**: the app's text and the docs, in every language, in the same pull request.
+2. **Build and release.**
+3. **Pictures**: retaken in every language, only where the interface changed.
+4. **Videos**: flagged when they show a changed window; remade by hand, when asked.
+5. **Publish**: README, wiki, website.
+6. **Native review**, after the release.
+
+## Working on it
+
+`tests/run.sh` runs the tests, offline. Each project keeps a copy of the tools it runs in CI
+(`docs-kit vendor`), so its CI needs no plugin. The workflow is in [CLAUDE.md](CLAUDE.md).
