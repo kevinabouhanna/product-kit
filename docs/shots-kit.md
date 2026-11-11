@@ -104,18 +104,26 @@ no shot waits for the Mac to be idle or is reported as not taken, real clicks ar
 this Mac's copy of the app is never quit. `check`, `update`, `record`, `tree` and `audit` go
 there; the commands that read files stay here.
 
-1. Into a shared folder go the tool itself, the app (the manifest's, or `--app`; zipped, as a
+1. `vm.prepare` runs here, in the project, writing into `$SHOTS_VM_DIR` what has to be made
+   from this Mac (other apps' icons, its time zone).
+2. Into a shared folder go the tool itself, the app (the manifest's, or `--app`; zipped, as a
    bundle's links don't survive the shared folder), a copy of the project's and the site's files
-   (what git tracks), and `vm.files`.
-2. `mac-vm run --display <vm.display>` boots a clone of the golden image with that screen.
-   Inside, the app is installed where the manifest says, `vm.files` go to the same place,
-   `vm.setup` runs from the project's copy, then the same command, which takes the VM's screen
-   whenever it needs it.
-3. Each file the run changed or added comes back to the site and the project. Nothing else is
+   (what git tracks), `vm.files`, and what `vm.prepare` made.
+3. `mac-vm run --display <vm.display>` boots a clone with that screen: of the project's own
+   image (`vm.image`), or of the golden one. Inside, the app is quit, installed where the
+   manifest says unless that's the same app already (so what an image approved for it stays),
+   `vm.files` go to the same place, the settings daemon starts again so the app reads them,
+   `vm.setup` runs from the project's copy (with `$SHOTS_VM_DIR`), then the same command, which
+   takes the VM's screen whenever it needs it.
+4. Each file the run changed or added comes back to the site and the project. Nothing else is
    touched, so a change made here meanwhile stays.
 
-The VM is a fresh Mac: none of this Mac's data, settings, accounts or apps unless `vm.files`
-and `vm.setup` put them there, and its own wallpaper and scale. A project switching to it
+The VM is a fresh Mac: none of this Mac's data, settings, accounts or apps unless `vm.files`,
+`vm.prepare` and `vm.setup` put them there, and its own wallpaper and scale. What needs a person
+once (a system extension allowed, a content filter, Location Services) goes in the project's
+image (#12): `mac-vm image <name>`, then `mac-vm provision --image <name> --display 3200x2000
+<script>` installs the app while the approvals are given with `mac-vm look`/`vnc`, and
+`vm.image` names it. A project switching to it
 compares a run's pictures with its current ones first. It takes no Mac lane; `mac-vm` holds
 one of the two VM lanes. One VM run per site at a time.
 
@@ -136,7 +144,9 @@ one of the two VM lanes. One VM run per site at a time.
 | `shots.vm.default` | `true`: run in a VM unless `--here` (#10). |
 | `shots.vm.display` | The VM's screen in pixels, shown at 2x: `3200x2000` (1600×1000 points, the default), big enough for the app's windows. |
 | `shots.vm.files` | Files and folders of this Mac copied to the same place in the VM before the app opens (`~` the home folder): the app's data and settings, for pictures that show them. |
-| `shots.vm.setup` | A command run in the VM from the project's copy, after the app is installed (`$SHOTS_APP`) and before any picture: the app's first-run state. |
+| `shots.vm.setup` | A command run in the VM from the project's copy, after the app is installed (`$SHOTS_APP`) and before any picture: the app's first-run state. What `vm.prepare` made is in `$SHOTS_VM_DIR`. |
+| `shots.vm.prepare` | A command run on this Mac, in the project, before the VM starts, writing into `$SHOTS_VM_DIR` what has to be made from this Mac: other apps' icons, its time zone (#12). |
+| `shots.vm.image` | The project's own image (`mac-vm image <name>`) to clone, set up once with the app's approvals, rather than the golden image (#12). |
 | `shots.branches` | `{"site": "gh-pages", "repo": "main"}`: the branches the asset check's report names. |
 | `site.url` | The site's address: links to `assets/…` written with it (a social card's `<meta>`) are the site's. |
 

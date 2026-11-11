@@ -73,6 +73,8 @@ export FAKE SITE
 out="$(cd "$APP" && PATH="/usr/bin:/bin" sk check --vm)"
 expect "--vm without mac-vm says what it needs" 'grep -q "needs mac-vm on PATH" <<<"$out"'
 cp "$SITE/index.html" "$TMP/index.before"
+shares() { ls "$HOME/Library/Caches/shots-kit/vm" 2>/dev/null | grep "^shots-" | sort; }
+shares_before="$(shares)"   # another run's, if one is going
 out="$(cd "$APP" && PATH="$FAKE/bin:$PATH" FAKE_STATUS=3 "$KIT" update main --vm --app "$TMP/App.app" 2>&1)"; status=$?
 expect "it runs in a clone with a 3200x2000 screen, and exits with the run's status" 'grep -qx -- "--display" "$FAKE/args" && grep -qx 3200x2000 "$FAKE/args" && [ "$status" = 3 ]'
 expect "the tool, the zipped app, the site and the project go in" 'grep -qx "./shots-kit" "$FAKE/shared" && grep -qx "./app.zip" "$FAKE/shared" && grep -qx "./site/shots/shots.json" "$FAKE/shared" && grep -qx "./repo/.product-kit.json" "$FAKE/shared" && ! grep -q "/.git/" "$FAKE/shared"'
@@ -80,18 +82,24 @@ expect "inside, the app goes where the manifest says, and the run takes the scre
   'grep -q "^app=./Applications/App.app.$" "$FAKE/script" && grep -q "MAC_LANE_IDLE=0 .*SHOTS_KIT_IN_VM=1 .*shots-kit. .update. .main. --repo .*--site" "$FAKE/script"'
 expect "what the run changed or added comes back" '[ "$(cat "$SITE/assets/main.png")" = retaken ] && [ "$(cat "$SITE/shots/trees/main.txt")" = tree ] && grep -q "Brought back from the VM" <<<"$out"'
 expect "a file it didn't change keeps what changed here meanwhile" 'grep -q "another session.s change" "$SITE/index.html"'
-expect "the shared folder is removed afterwards" '[ -z "$(ls "$HOME/Library/Caches/shots-kit/vm" 2>/dev/null | grep "^shots-")" ]'
+expect "the shared folder is removed afterwards" '[ "$(shares)" = "$shares_before" ]'
 cp "$TMP/index.before" "$SITE/index.html"; : >"$SITE/assets/main.png"; rm -rf "$SITE/shots/trees"
 echo data >"$TMP/history.db"
 cat >"$APP/.product-kit.json" <<EOF
 {"repo": "me/app", "shots": {"site": "../app-site", "repo_assets": "docs/assets.json",
- "vm": {"default": true, "display": "2400x1600", "files": ["$TMP/history.db", "~/no-such-file-here"], "setup": "./first-run.sh"}}}
+ "vm": {"default": true, "display": "2400x1600", "files": ["$TMP/history.db", "~/no-such-file-here"], "setup": "./first-run.sh",
+        "image": "myapp", "prepare": "pwd >\"\$SHOTS_VM_DIR/made-here.txt\""}}}
 EOF
 out="$(cd "$APP" && PATH="$FAKE/bin:$PATH" sk check --app "$TMP/App.app")"
 expect "vm.default runs in a VM without --vm, with the config's display" 'grep -qx 2400x1600 "$FAKE/args"'
 expect "vm.files go in and to the same place, and a missing one is said" \
   'grep -qx "./files/0/history.db" "$FAKE/shared" && grep -q "ditto \"\$s\"/files/0/.history.db. .$TMP/history.db.$" "$FAKE/script" && grep -q "no-such-file-here isn.t on this Mac" <<<"$out"'
 expect "vm.setup runs inside, from the project, before the pictures" 'grep -q "^SHOTS_APP=\"\$app\" /bin/bash -c .\./first-run.sh.$" "$FAKE/script"'
+expect "vm.image clones the project's image (#12)" 'grep -qx -- "--image" "$FAKE/args" && grep -qx myapp "$FAKE/args"'
+expect "vm.prepare runs here, in the project, and what it writes goes in" 'grep -qx "./prepared/made-here.txt" "$FAKE/shared"'
+expect "inside, setup finds it in SHOTS_VM_DIR" 'grep -q "^export SHOTS_VM_DIR=\"\$s/prepared\"$" "$FAKE/script"'
+expect "the same app is kept, the app quit first, and settings read again from the files placed" \
+  'grep -q "diff -rq \"\$app\"" "$FAKE/script" && grep -q "to quit" "$FAKE/script" && grep -q "killall -u \"\$USER\" cfprefsd" "$FAKE/script"'
 rm -f "$FAKE/args"
 (cd "$APP" && PATH="$FAKE/bin:$PATH" "$KIT" check nothing --here --app "$TMP/App.app" >/dev/null 2>&1)
 (cd "$APP" && PATH="$FAKE/bin:$PATH" "$KIT" coverage >/dev/null 2>&1)
