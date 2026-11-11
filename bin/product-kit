@@ -1,0 +1,23 @@
+#!/bin/bash
+#
+# product-kit: everything a product shows people, kept current and in every language
+# (kevinabouhanna/product-kit#1). One command with a part for each job:
+#
+#   product-kit docs …     the docs: docs/ is the source of the site's docs pages and the
+#                          wiki (docs-kit; `docs-kit …` on PATH is the same)
+#   product-kit lang …     translations and the glossary (#1, step 2: not yet)
+#   product-kit shots …    pictures and videos (#1, step 3: not yet)
+#   product-kit version
+set -euo pipefail
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+
+usage() { sed -n '3,10p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+
+case "${1:-help}" in
+  docs) shift; exec python3 -I "$here/docs-kit" "$@" ;;
+  lang|shots)
+    echo "product-kit: '$1' isn't here yet (kevinabouhanna/product-kit#1)." >&2; exit 2 ;;
+  version|--version) echo "product-kit: docs $(python3 -I "$here/docs-kit" version)" ;;
+  help|-h|--help) usage ;;
+  *) echo "product-kit: no command '$1'" >&2; usage >&2; exit 2 ;;
+esac
