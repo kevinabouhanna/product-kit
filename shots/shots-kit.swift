@@ -1298,6 +1298,7 @@ struct Session {
         place(window)
         var picture = try await picture(window, crop: shot.crop)
         for attempt in 0..<8 where shot.crop == nil && !isActive(picture.image, window: window) {
+            InVM.allowSystemAlert()
             try bringForward(window)
             // Longer each time: something else can hold the front for a few seconds.
             if attempt >= 3 { usleep(UInt32(attempt) * 400_000) }
@@ -2167,6 +2168,24 @@ enum InVM {
             if FileManager.default.isExecutableFile(atPath: path) { return path }
         }
         return nil
+    }
+
+    /// In the VM only: a system alert in front (UserNotificationCenter), such
+    /// as macOS asking again whether captures made over SSH may bypass the
+    /// window picker, is answered Allow, so the app's window can come forward.
+    /// The VM is this run's own, so there's nobody else to answer it.
+    static func allowSystemAlert() {
+        guard inside, let front = NSWorkspace.shared.frontmostApplication,
+              front.bundleIdentifier == "com.apple.UserNotificationCenter" else { return }
+        let ax = AXUIElementCreateApplication(front.processIdentifier)
+        for window in attribute(ax, kAXWindowsAttribute) as? [AXUIElement] ?? [] {
+            if let allow = find("AXButton:Allow", in: window) {
+                AXUIElementPerformAction(allow, kAXPressAction as CFString)
+                print("  answered a system alert in the VM: Allow")
+                usleep(1_000_000)
+                return
+            }
+        }
     }
 
     /// Quoted for the VM's shell.

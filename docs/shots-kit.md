@@ -114,7 +114,9 @@ there; the commands that read files stay here.
    manifest says unless that's the same app already (so what an image approved for it stays),
    `vm.files` go to the same place, the settings daemon starts again so the app reads them,
    `vm.setup` runs from the project's copy (with `$SHOTS_VM_DIR`), then the same command, which
-   takes the VM's screen whenever it needs it.
+   takes the VM's screen whenever it needs it. A system alert that keeps the app's window from
+   coming forward there (macOS asking again whether captures over SSH may bypass the window
+   picker) is answered Allow.
 4. Each file the run changed or added comes back to the site and the project. Nothing else is
    touched, so a change made here meanwhile stays.
 
