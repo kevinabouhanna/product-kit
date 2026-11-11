@@ -14,14 +14,15 @@ claude plugin install product-kit@kevinabouhanna --scope user
 ```
 
 The plugin is listed in the `kevinabouhanna` marketplace (kevinabouhanna/claude-parallel-sessions).
-It puts `product-kit` and `docs-kit` on PATH and gives every session the skill for each part.
+It puts `product-kit`, `docs-kit` and `lang-kit` on PATH and gives every session the skill for each
+part. They share one config, `.product-kit.json`, with the languages listed once.
 
 ## The parts
 
 | Part | Does | State |
 |---|---|---|
 | `product-kit docs` (`docs-kit`) | `docs/` is the one source; the website's docs pages and the wiki are built from it, and a check asks for docs with the feature. [Reference](docs/docs-kit.md) | ✅ |
-| `product-kit lang` | Every language held to its glossary; a changed page needs its copy; what each release changed, for the native reviewer; adding a language | #1, step 2 |
+| `product-kit lang` (`lang-kit`) | Every language's table held to the app and to its glossary (Apple `.strings` and `.xcstrings`, JSON, `.resx`, Qt `.ts`); a changed page needs its copy; what each release changed, for the native reviewer; adding a language. [Reference](docs/lang-kit.md) | ✅ |
 | `product-kit shots` | Every picture, GIF and video listed with what it shows; retakes the pictures whose interface changed (macOS, web, Windows); flags the videos | #1, step 3 |
 | `product-kit status` | What's out of date for a release, across all of it | #1, step 7 |
 
@@ -39,4 +40,4 @@ Language runs through every step: a translated picture is a capture of the trans
 ## Working on it
 
 `tests/run.sh` runs the tests, offline. Each project keeps a copy of the tools it runs in CI
-(`docs-kit vendor`), so its CI needs no plugin. The workflow is in [CLAUDE.md](CLAUDE.md).
+(`docs-kit vendor`, `lang-kit vendor`), so its CI needs no plugin. The workflow is in [CLAUDE.md](CLAUDE.md).

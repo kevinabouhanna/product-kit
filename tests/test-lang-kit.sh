@@ -1,0 +1,204 @@
+#!/bin/bash
+#
+# lang-kit (#4), offline: small projects in a temporary folder, one per table
+# format, and each command checked against them.
+# Usage: tests/test-lang-kit.sh
+
+set -uo pipefail
+KIT="$(cd "$(dirname "$0")/.." && pwd)/bin/lang-kit"
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
+fails=0
+ok() { printf '  ok    %s\n' "$1"; }
+fail() { printf '  FAIL  %s\n' "$1"; fails=$((fails + 1)); }
+expect() { if eval "$2"; then ok "$1"; else fail "$1"; fi; }
+lk() { python3 -I "$KIT" "$@"; }
+lks() { python3 -I "$KIT" "$@" || true; }   # for a pipe: its output, whatever its status
+repo() { rm -rf "$1"; mkdir -p "$1"; cd "$1" || exit 1; git init -q -b main; git config user.email t@t; git config user.name t; }
+commit() { git add -A; git commit -qm "${1:-x}"; }
+
+# --------------------------------------------------------------------------
+echo "--- strings: Apple .strings, the text scanned from L(\"…\")"
+P="$TMP/app"; repo "$P"
+mkdir -p Sources Resources/en.lproj Resources/fr.lproj docs/fr
+cat >.product-kit.json <<'EOF'
+{
+  "repo": "me/app",
+  "languages": {"fr": {"name": "Français", "site": "fr"}},
+  "developer_pages": ["docs/development.md"],
+  "lang": {
+    "strings": {"format": "strings", "path": "Resources/{code}.lproj/Localizable.strings",
+                "keys": {"scan": ["Sources/*.swift"], "except": ["**/Skip.swift"]}},
+    "glossary": "Resources/{code}.lproj/Glossary.json"
+  }
+}
+EOF
+cat >Sources/App.swift <<'EOF'
+let a = L("Settings")
+let b = L("Ad blocking is off")
+let c = L("%@ of %@", x, y)   // a comment with L("Not a key")
+// L("Commented out")
+let d = L("Say \"hi\"\nthere")
+let e = L("Hello \(name)")
+EOF
+echo 'let z = L("Skipped")' >Sources/Skip.swift
+cat >Resources/fr.lproj/Localizable.strings <<'EOF'
+/* French */
+"Settings" = "Réglages";
+"Ad blocking is off" = "Le blocage des pubs est désactivé"; // pubs, not the glossary's word
+"%@ of %@" = "%2$@ sur %1$@";
+"Say \"hi\"\nthere" = "Dis \"salut\"\nlà";
+EOF
+cat >Resources/fr.lproj/Glossary.json <<'EOF'
+{"language": "fr", "name": "Français", "reviewer": "frfriend",
+ "avoid": [{"text": "pubs", "why": "say publicités"}],
+ "terms": [{"en": "Settings", "text": "Réglages", "everywhere": true},
+           {"en": "Ad blocking", "text": "Blocage des publicités", "everywhere": true},
+           {"en": "Wiki", "text": "Wiki", "where": "docs"}]}
+EOF
+commit
+lk keys >"$TMP/keys.txt"
+printf '%s\n' '%@ of %@' 'Ad blocking is off' 'Say "hi"\nthere' 'Settings' >"$TMP/want.txt"
+expect "keys come from L(), comments and interpolations left out" 'cmp -s "$TMP/keys.txt" "$TMP/want.txt"'
+out="$(lk strings)"; status=$?
+expect "strings fails on the glossary's word missing" '[ $status -eq 1 ] && grep -q "doesn.t say \"Blocage des publicités\"" <<<"$out"'
+expect "strings names a word to avoid, and why" 'grep -q "uses \"pubs\": say publicités" <<<"$out"'
+expect "positional placeholders match sequential ones" '! grep -q "placeholders differ" <<<"$out"'
+expect "a docs-only term isn't asked of the app" '! grep -q "Wiki" <<<"$out"'
+sed -i '' 's/Le blocage des pubs est désactivé/Blocage des publicités désactivé/' Resources/fr.lproj/Localizable.strings
+expect "a table in its glossary's words passes" 'lks strings | grep -q "all 4 pieces of text"'
+echo 'let f = L("Quit")' >>Sources/App.swift
+echo '"Gone" = "Parti";' >>Resources/fr.lproj/Localizable.strings
+echo '"Settings %@" = "Réglages";' >>Resources/fr.lproj/Localizable.strings
+echo 'let g = L("Settings %@", v)' >>Sources/App.swift
+out="$(lk strings)"
+expect "a missing piece of text is named" 'grep -q "1 missing, such as: Quit" <<<"$out"'
+expect "text the app no longer says is named" 'grep -q "the app no longer says, such as: Gone" <<<"$out"'
+expect "different placeholders are named" 'grep -q "placeholders differ: \"Settings %@\"" <<<"$out"'
+rm Resources/fr.lproj/Glossary.json
+expect "a missing glossary fails" 'lks strings | grep -q "no glossary at Resources/fr.lproj/Glossary.json"'
+git checkout -q -- . && git clean -qfd
+
+# --------------------------------------------------------------------------
+echo "--- check: pages and their copies"
+mkdir -p docs/fr
+echo "# Home" >README.md; echo "# Accueil" >README.fr.md
+echo "# Guide" >docs/guide.md; echo "# Guide" >docs/fr/guide.md
+echo "# Dev" >docs/development.md
+commit pages
+git checkout -q -b change
+echo "more" >>README.md; echo "more" >>docs/development.md
+commit
+out="$(PR_BODY="" lk check main)"; status=$?
+expect "a changed page without its copy fails" '[ $status -eq 1 ] && grep -q "README.md changed, but not README.fr.md" <<<"$out"'
+expect "a page for developers asks for nothing" '! grep -q development <<<"$out"'
+expect "the pull request's reason lets it through" 'PR_BODY="Fixes a link.
+No translation needed: a typo" lks check main | grep -q "only, as the pull request says"'
+echo "plus" >>README.fr.md; commit
+expect "with its copy changed too, it passes" 'PR_BODY="" lks check main | grep -q "changed with it (fr)"'
+echo "# New" >docs/new.md
+expect "a new page with no copy fails" 'PR_BODY="" lks check main | grep -q "docs/new.md is new, with no docs/fr/new.md"'
+rm docs/new.md
+
+# --------------------------------------------------------------------------
+echo "--- review"
+git checkout -q main
+git tag v1
+echo '"Quit" = "Quitter";' >>Resources/fr.lproj/Localizable.strings
+echo "plus" >>docs/fr/guide.md
+commit
+out="$(lk review v1)"
+expect "review heads each language, for its reviewer" 'grep -q "### Français (fr), v1 to HEAD, for @frfriend" <<<"$out"'
+expect "review lists what's new in the table" 'grep -q "| Quit | Quitter |" <<<"$out" && grep -q "1 new or changed" <<<"$out"'
+expect "review lists the pages changed" 'grep -q "Pages changed: \`docs/fr/guide.md\`" <<<"$out"'
+
+# --------------------------------------------------------------------------
+echo "--- add"
+out="$(lk add de Deutsch)"
+expect "add puts the language in the config" 'python3 -c "import json,sys; sys.exit(json.load(open(\".product-kit.json\"))[\"languages\"][\"de\"][\"name\"] != \"Deutsch\")"'
+expect "add writes its glossary from another's terms" 'python3 -c "import json,sys; g=json.load(open(\"Resources/de.lproj/Glossary.json\")); sys.exit(not (g[\"language\"]==\"de\" and len(g[\"terms\"])==3 and g[\"terms\"][0][\"text\"]==\"\" and g[\"terms\"][0][\"everywhere\"]))"'
+expect "add writes its table, and the checklist" '[ -f Resources/de.lproj/Localizable.strings ] && grep -q "The glossary first" <<<"$out"'
+expect "strings then lists all of it as missing" 'lks strings | grep -q "Deutsch (de):"'
+
+# --------------------------------------------------------------------------
+echo "--- other formats"
+P="$TMP/xc"; repo "$P"
+cat >.product-kit.json <<'EOF'
+{"languages": {"zh-Hans": {"name": "简体中文"}}, "lang": {"strings": {"format": "xcstrings", "path": "Localizable.xcstrings"}}}
+EOF
+cat >Localizable.xcstrings <<'EOF'
+{"sourceLanguage": "en", "version": "1.0", "strings": {
+  "Settings": {"localizations": {"zh-Hans": {"stringUnit": {"state": "translated", "value": "设置"}}}},
+  "%lld items": {"localizations": {"zh-Hans": {"stringUnit": {"state": "translated", "value": "%lld 项"}}}},
+  "Quit": {"localizations": {"zh-Hans": {"stringUnit": {"state": "new", "value": ""}}}},
+  "v1.0": {"shouldTranslate": false}
+}}
+EOF
+commit
+expect "xcstrings: keys from the catalog, a new one missing, one not to translate left out" \
+  'lks strings | grep -q "1 missing, such as: Quit" && [ "$(lk keys | wc -l | tr -d " ")" = 3 ]'
+
+P="$TMP/web"; repo "$P"
+mkdir -p locales
+cat >.product-kit.json <<'EOF'
+{"languages": {"es": {}}, "lang": {"strings": {"format": "json", "path": "locales/{code}.json"}}}
+EOF
+echo '{"menu": {"quit": "Quit", "count": "{n} files"}}' >locales/en.json
+echo '{"menu": {"quit": "Salir", "count": "{count} archivos"}}' >locales/es.json
+commit
+out="$(lk strings)"
+expect "json: nested keys, braces placeholders compared" 'grep -q "placeholders differ: \"{n} files\" → \"{count} archivos\"" <<<"$out"'
+echo '{"language": "es", "terms": [{"en": "Quit", "text": "Cerrar"}]}' >locales/es.glossary.json
+cat >.product-kit.json <<'EOF'
+{"languages": {"es": {}}, "lang": {"strings": {"format": "json", "path": "locales/{code}.json"},
+ "glossary": "locales/{code}.glossary.json"}}
+EOF
+expect "json: the glossary is held to the English text, not the key" \
+  'lks strings | grep -q "\"Quit\" is \"Salir\", but the glossary says \"Cerrar\""'
+
+P="$TMP/net"; repo "$P"
+cat >.product-kit.json <<'EOF'
+{"languages": {"fr": {}}, "lang": {"strings": {"format": "resx", "path": "Strings.{code}.resx", "source_path": "Strings.resx"}}}
+EOF
+cat >Strings.resx <<'EOF'
+<?xml version="1.0" encoding="utf-8"?>
+<root><data name="Quit" xml:space="preserve"><value>Quit</value></data>
+<data name="Count" xml:space="preserve"><value>{0} speakers</value></data>
+<data name="Icon" type="System.Resources.ResXFileRef"><value>icon.ico</value></data></root>
+EOF
+cat >Strings.fr.resx <<'EOF'
+<?xml version="1.0" encoding="utf-8"?>
+<root><data name="Quit" xml:space="preserve"><value>Quitter</value></data></root>
+EOF
+commit
+expect "resx: the neutral file is the source, files left out" 'lks strings | grep -q "1 missing, such as: Count"'
+
+P="$TMP/qt"; repo "$P"
+cat >.product-kit.json <<'EOF'
+{"languages": {"de": {}}, "lang": {"strings": {"format": "ts", "path": "i18n/app_{code}.ts"}}}
+EOF
+mkdir i18n
+cat >i18n/app_de.ts <<'EOF'
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE TS><TS version="2.1" language="de">
+<context><name>Tray</name>
+<message><source>Quit</source><translation>Beenden</translation></message>
+<message><source>Switch to %1</source><translation type="unfinished"></translation></message>
+<message><source>Old</source><translation type="obsolete">Alt</translation></message>
+</context></TS>
+EOF
+commit
+expect "ts: unfinished is missing, obsolete left out" 'out="$(lks strings)"; grep -q "1 missing, such as: Switch to %1" <<<"$out" && ! grep -q Old <<<"$out"'
+
+# --------------------------------------------------------------------------
+echo "--- the rest"
+cd "$TMP/app" || exit 1
+expect "vendor copies it to Scripts/lang-kit, runnable" 'lk vendor >/dev/null && [ -x Scripts/lang-kit ] && cmp -s Scripts/lang-kit "$KIT"'
+expect "vendor --check says it's this copy" 'lk vendor --check | grep -q "is this copy"'
+expect "a .docs-kit.json is read when there's no .product-kit.json" 'git mv .product-kit.json .docs-kit.json && lk keys >/dev/null'
+expect "help lists the commands" 'lk help | grep -q "lang-kit review"'
+cd "$TMP" || exit 1
+expect "outside a project it says what's missing" '! lk strings 2>/dev/null'
+
+[ "$fails" -eq 0 ] && echo "lang-kit: every test passed" || echo "lang-kit: $fails failed"
+exit $((fails > 0))

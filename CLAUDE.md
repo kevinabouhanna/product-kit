@@ -14,11 +14,11 @@ through without asking. What's particular here:
   then `git branch -D <branch>` and `git push origin --delete <branch>`.
 - **Install on this Mac:** `claude plugin marketplace update kevinabouhanna && claude plugin
   update product-kit@kevinabouhanna`. New sessions pick it up.
-- **Projects keep copies.** A change to a tool a project vendors (`bin/docs-kit` →
-  `Scripts/docs-kit`) is followed by a pull request in each such project with `docs-kit vendor`
-  (NetworkMonitor today). It's tooling only there: no app release.
+- **Projects keep copies.** A change to a tool a project vendors (`bin/docs-kit`, `bin/lang-kit`
+  → `Scripts/…`) bumps its `VERSION` and is followed by a pull request in each such project with
+  `<tool> vendor` (NetworkMonitor today). It's tooling only there: no app release.
 - **Generic, never one project's.** What's particular to a project goes in its config
-  (`.docs-kit.json` today), never in the code. NetworkMonitor is the first user; each part is
+  (`.product-kit.json`), never in the code. NetworkMonitor is the first user; each part is
   proved on a second project before it's called done.
 - **Plain words** in commands, messages and docs, as in Kevin's apps.
 - Sharing the Mac (lanes, the screen, worktrees) is the `shared-mac` plugin's; use `mac-lane`
