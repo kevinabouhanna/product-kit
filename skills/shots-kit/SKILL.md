@@ -1,14 +1,19 @@
 ---
 name: shots-kit
-description: How a project's website pictures of its macOS app are kept current when its .product-kit.json has a "shots" section - each picture's window is read through the Accessibility API and compared with the tree recorded with it, retaken only when the interface changed, and every image, GIF and video is listed with the window it shows (the asset check). Use when a change alters a window the site or README shows, when adding or renaming a picture or video, when the asset check fails, after a release (retaking pictures), or when setting pictures up in a new project.
+description: How a project's pictures of its macOS app (website or README) are kept current when it has a shots/shots.json, on its site or in its repo - each picture's window is read through the Accessibility API and compared with the tree recorded with it, or the project draws its own pictures from made-up data (the manifest's "render") and each drawing is compared pixel by pixel; retaken only when the interface changed, and every image, GIF and video is listed with the window it shows (the asset check). Use when a change alters a window the site or README shows, when adding or renaming a picture or video, when the asset check fails, after a release (retaking pictures), or when setting pictures up in a new project.
 ---
 
 # shots-kit: pictures that never go stale
 
 `shots-kit` (on PATH from this plugin; `product-kit shots …` is the same) builds itself on first
 use. Each project keeps a copy of its source for CI (`shots.vendor`), and its CLAUDE.md says
-which make targets wrap it. The site's `shots/shots.json` lists each picture's window; the
-trees recorded with them are in `shots/trees/`.
+which make targets wrap it. `shots/shots.json` (on the site, or in the repo when there's no
+site) lists each picture's window; the trees recorded with them are in `shots/trees/`.
+
+**Drawn by the project** (the manifest has `render`, as claude-profiles-mac's): `check` builds,
+draws every picture out of sight from made-up data, and compares each with its picture pixel
+by pixel; `update` copies the ones that differ. No app, no screen, no lane: run it whenever a
+change touches what a picture shows, and commit the redrawn pictures in the same pull request.
 
 ## Never judge pictures by eye
 
@@ -36,7 +41,7 @@ the issue its remake waits on.
 
 ## Sharing the Mac
 
-It takes the app's Mac lane and `screen` itself, only while it reads or takes windows, and puts
+Drawings need none of this. For an app's windows: it takes the app's Mac lane and `screen` itself, only while it reads or takes windows, and puts
 the installed app back as it was. Tell the other sessions before a run (the shared-mac skill).
 It needs a Retina screen and, for pictures, looks and clicks, the Mac idle.
 

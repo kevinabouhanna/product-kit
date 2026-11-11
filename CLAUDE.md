@@ -18,7 +18,8 @@ through without asking. What's particular here:
   `shots/shots-kit.swift` → `Scripts/…`) bumps its version (`VERSION`, `shotsKitVersion`) and is
   followed by a pull request in each such project with `<tool> vendor` (NetworkMonitor today).
   It's tooling only there: no app release.
-- **shots-kit drives a real app.** Its tests cover what reads files; a change to how it reads,
+- **shots-kit drives a real app** (unless the project draws its own pictures, `render`, which its
+  tests cover). Its tests cover what reads files; a change to how it reads,
   takes or masks windows is checked by running `check` against NetworkMonitor's app before and
   after, and comparing. Never on Kevin's screen while he works (claude-parallel-sessions#62):
   in a VM (`mac-vm run`, the shared-mac skill), or behind the silent idle gate
