@@ -1,6 +1,6 @@
 ---
 name: docs-kit
-description: How a project's docs work when it has a .product-kit.json (or .docs-kit.json) - docs/ in the repository is the one source, and the website's docs pages and the GitHub wiki are built from it, never edited. Use when a change adds or changes what an app says or does (docs-check asks for the docs in the same pull request), when writing or moving a docs page or heading, when publishing the website's docs (with a release), when linking from an app into its docs, or when setting docs up in a new project.
+description: How a project's docs work when it has a .product-kit.json (or .docs-kit.json) - docs/ in the repository is the one source, and the website's docs pages and the GitHub wiki are built from it, never edited; and, when its config has a "plan" section, how its plan is kept the same across milestones, issues, the project board and the phase pages. Use when a change adds or changes what an app says or does (docs-check asks for the docs in the same pull request), when writing or moving a docs page or heading, when publishing the website's docs (with a release), when linking from an app into its docs, when changing the plan or roadmap (a phase, a plan, its order or horizon), or when setting docs or a plan up in a new project.
 ---
 
 # docs-kit: one source for the docs
@@ -55,6 +55,30 @@ file names (or `wiki.names`), the sidebar from `docs/README.md`'s tables, each l
 pages as `<Page>-<code>`. A GitHub workflow runs it on every push to `main` that touches the
 docs, with the project's copy (`python3 -I Scripts/docs-kit wiki wiki "$GITHUB_SHA"`).
 
+## The plan
+
+When `.product-kit.json` has a `plan` section, the project's plan is in four places that must
+agree: **milestones** (one per phase), **issues** (each plan an issue in its phase's
+milestone, its steps sub-issues), **the project board** (the order: Order, and Horizon Now /
+Next / Later), and **the phase pages** (`plan.pages`, each with
+`**Milestone:** <milestone title> · **Status:** <Done|Now|Next|Later>` under its title, and an
+index written from GitHub).
+
+- **A change to the plan changes all four in the same session**: the issues (open, close,
+  move, set a parent), their Order and Horizon on the board, the milestone (open, close, due
+  date), and the phase's page (mention every open plan in it as `#N`). Then
+  `docs-kit plan status --write` (the pages' Status lines) and `docs-kit plan index` (the index),
+  and commit the pages in a pull request.
+- `docs-kit plan check` holds them together, in CI. When it fails, it says what disagrees: fix
+  whichever side is wrong (GitHub or the page), never the check.
+- Status is Done when the milestone is closed or has no open issues, otherwise the earliest
+  Horizon among its open issues. An open milestone with nothing left is closed.
+- Never edit the index below its first `## ` heading: it's written. The title and text above
+  it are the project's own.
+- Setting it up: add `"plan": {"pages", "index", "project": {"owner", "number"}, "fields",
+  "no_page"}`, give each page its Milestone line (`plan status --write` adds it where the page's
+  title is the milestone's), `plan index`, and `plan check` in CI (it reads GitHub with `gh`).
+
 ## The project's copy
 
 `docs-kit vendor` copies the plugin's `docs-kit` to `Scripts/docs-kit` (or `vendor` in the
@@ -63,7 +87,8 @@ whether the copy is behind. Update the copy in its own pull request.
 
 ## A new project
 
-1. `docs-kit init` writes a starting `.product-kit.json`. Fill in:
+1. `docs-kit init` writes a starting `.product-kit.json` (a project using only the plan needs
+   just `repo` and `plan`). Fill in:
    - `check.needs_docs`: `[{"paths": [globs], "except": [globs], "lines": "regex"}]`, the
      files (and, optionally, the changed lines) that change what users see;
    - `developer_pages`, `extra_pages` (pages outside `docs/`, such as `SECURITY.md`, with
