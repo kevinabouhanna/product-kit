@@ -312,6 +312,8 @@ expect "a failed call is tried again" '"$KIT" plan check >/dev/null'
 echo 9 >"$TMP/gh/flaky"
 expect "and gives up in plain words" 'plan_fails "couldn'"'"'t read the plan from GitHub: connection reset by peer"'
 rm "$TMP/gh/flaky"
+expect "gh signed out is said at once" \
+  'DOCS_KIT_GH="printf \"To get started with GitHub CLI, please run:  gh auth login\nAlternatively, populate the GH_TOKEN environment variable.\n\" >&2; exit 4 #" plan_fails "isn'"'"'t signed in to GitHub"'
 mv .product-kit.json "$TMP/elsewhere.json"
 expect "--config reads a config from elsewhere, before -C moves" \
   '(cd "$TMP" && "$KIT" --config elsewhere.json -C "$Q" plan check >/dev/null)'
