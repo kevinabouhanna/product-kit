@@ -73,8 +73,6 @@ export FAKE SITE
 out="$(cd "$APP" && PATH="/usr/bin:/bin" sk check --vm)"
 expect "--vm without mac-vm says what it needs" 'grep -q "needs mac-vm on PATH" <<<"$out"'
 cp "$SITE/index.html" "$TMP/index.before"
-shares() { ls "$HOME/Library/Caches/shots-kit/vm" 2>/dev/null | grep "^shots-" | sort; }
-shares_before="$(shares)"   # another run's, if one is going
 out="$(cd "$APP" && PATH="$FAKE/bin:$PATH" FAKE_STATUS=3 "$KIT" update main --vm --app "$TMP/App.app" 2>&1)"; status=$?
 expect "it runs in a clone with a 3200x2000 screen, and exits with the run's status" 'grep -qx -- "--display" "$FAKE/args" && grep -qx 3200x2000 "$FAKE/args" && [ "$status" = 3 ]'
 expect "the tool, the zipped app, the site and the project go in" 'grep -qx "./shots-kit" "$FAKE/shared" && grep -qx "./app.zip" "$FAKE/shared" && grep -qx "./site/shots/shots.json" "$FAKE/shared" && grep -qx "./repo/.product-kit.json" "$FAKE/shared" && ! grep -q "/.git/" "$FAKE/shared"'
@@ -82,7 +80,9 @@ expect "inside, the app goes where the manifest says, and the run takes the scre
   'grep -q "^app=./Applications/App.app.$" "$FAKE/script" && grep -q "MAC_LANE_IDLE=0 .*SHOTS_KIT_IN_VM=1 .*shots-kit. .update. .main. --repo .*--site" "$FAKE/script"'
 expect "what the run changed or added comes back" '[ "$(cat "$SITE/assets/main.png")" = retaken ] && [ "$(cat "$SITE/shots/trees/main.txt")" = tree ] && grep -q "Brought back from the VM" <<<"$out"'
 expect "a file it didn't change keeps what changed here meanwhile" 'grep -q "another session.s change" "$SITE/index.html"'
-expect "the shared folder is removed afterwards" '[ "$(shares)" = "$shares_before" ]'
+# This run's own folder, as handed to mac-vm: another run's may come and go meanwhile (two CI runs at once).
+share_dir="$(grep -A1 -x -- --share "$FAKE/args" | tail -n 1)"
+expect "the shared folder is removed afterwards" '[ -n "$share_dir" ] && [ ! -e "$share_dir" ]'
 cp "$TMP/index.before" "$SITE/index.html"; : >"$SITE/assets/main.png"; rm -rf "$SITE/shots/trees"
 echo data >"$TMP/history.db"
 cat >"$APP/.product-kit.json" <<EOF
