@@ -8,6 +8,11 @@
                               the reviewer's list, a new language (lang-kit; same as `lang-kit …`)
   product-kit shots …         every picture, GIF and video listed and kept current
                               (shots-kit; same as `shots-kit …`)
+  product-kit init [--dry-run] [--kind KIND] [--name N] [--pitch P] [--languages en,fr]
+                   [--site none|gh-pages|folder:DIR|repo:OWNER/NAME]
+                              a new project set up in one command: the config, the plan's pages,
+                              the docs, the README, the list of pictures, local CI, the tools'
+                              copies, CLAUDE.md; on an existing one, only what's missing
   product-kit projects        the projects that use product-kit, and whether their copies of
                               the tools are this version
   product-kit vendor --all [--dry-run] [--only NAME,… [--upkeep ISSUE]]
@@ -751,6 +756,304 @@ def facts_run(args: list[str]) -> int:
     return 1 if (unknown or (stale and "--write" not in args)) else 0
 
 
+# A new project, set up in one command (#42)
+
+KINDS = ("mac", "iphone", "mac+iphone", "web-view", "plugin", "cli")
+
+
+def detect_kind(root: pathlib.Path) -> str | None:
+    """What the project is, from its files: a Claude plugin, an app built on web views (Tauri),
+    an iPhone app, a Mac app, both, or a command-line tool."""
+    if (root / ".claude-plugin" / "plugin.json").exists():
+        return "plugin"
+    if (root / "src-tauri").is_dir() or any(root.glob("*/src-tauri")):
+        return "web-view"
+    projects = list(root.glob("*.xcodeproj")) + list(root.glob("*/*.xcodeproj"))
+    text = " ".join((pr / "project.pbxproj").read_text(errors="replace") for pr in projects if (pr / "project.pbxproj").exists())
+    package = (root / "Package.swift").read_text(errors="replace") if (root / "Package.swift").exists() else ""
+    iphone = "iphoneos" in text or ".iOS(" in package
+    mac = "macosx" in text or ".macOS(" in package
+    if iphone and mac:
+        return "mac+iphone"
+    if iphone:
+        return "iphone"
+    if mac:
+        return "mac"
+    for plist in [f for f in root.glob("*/Info.plist")] + [f for f in root.glob("*/*/Info.plist")]:
+        if any(part in SKIP_DIRS for part in plist.parts):
+            continue
+        text = plist.read_text(errors="replace")
+        if "LSRequiresIPhoneOS" in text or "UIDeviceFamily" in text:
+            return "iphone"
+        if "LSMinimumSystemVersion" in text or "LSUIElement" in text:
+            return "mac"
+    # Or one its build script makes, with the Info.plist written there.
+    for script in ("build.sh", "Makefile", "Scripts/build.sh", "scripts/build.sh"):
+        text = (root / script).read_text(errors="replace") if (root / script).is_file() else ""
+        if "LSRequiresIPhoneOS" in text or "iphonesimulator" in text:
+            return "iphone"
+        if "LSMinimumSystemVersion" in text or ".app/Contents" in text:
+            return "mac"
+    if package or (root / "pyproject.toml").exists() or (root / "Cargo.toml").exists() or (root / "go.mod").exists():
+        return "cli"
+    return None
+
+
+def tables_in(root: pathlib.Path) -> dict | None:
+    """The app's main table of text, as `lang.strings` names it, when there is one."""
+    for f in text_tables(root):
+        name = pathlib.PurePosixPath(f)
+        if name.name == "Localizable.xcstrings":
+            return {"format": "xcstrings", "path": f}
+        if name.name == "Localizable.strings" and name.parent.name.endswith(".lproj"):
+            code = name.parent.name[:-len(".lproj")]
+            return {"format": "strings", "path": f.replace(f"{code}.lproj", "{code}.lproj")}
+    return None
+
+
+def ask(question: str, given: str | None, default: str | None = None) -> str | None:
+    """A value given on the command line, or asked for when a person is at the terminal."""
+    if given is not None:
+        return given
+    if sys.stdin.isatty():
+        answer = input(f"{question}" + (f" [{default}]" if default else "") + ": ").strip()
+        return answer or default
+    return default
+
+
+def init(args: list[str]) -> int:
+    def option(name):
+        return args[args.index(name) + 1] if name in args and args.index(name) + 1 < len(args) else None
+
+    dry = "--dry-run" in args
+    root = pathlib.Path(option("--repo")).resolve() if option("--repo") else checkout_root()
+    done: list[str] = []
+    kept: list[str] = []
+    missing: list[str] = []
+    # A project that has a config already is the owner's: init says what it lacks, and writes
+    # those only with --fill (#42). A new one gets everything.
+    fill = not any((root / c).exists() for c in CONFIGS) or "--fill" in args
+
+    def write(rel: str, text: str, mode: int | None = None):
+        path = root / rel
+        if path.exists():
+            kept.append(rel)
+            return
+        if not fill:
+            missing.append(rel)
+            return
+        done.append(f"wrote {rel}")
+        if not dry:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+            if mode:
+                path.chmod(mode)
+
+    config_file = next((root / c for c in CONFIGS if (root / c).exists()), None)
+    config = json.loads(config_file.read_text(encoding="utf-8")) if config_file else {}
+    kind = option("--kind") or config.get("kind") or detect_kind(root)
+    if kind not in KINDS:
+        fail(f"what kind of project is it? --kind {'|'.join(KINDS)} (it couldn't tell from its files)")
+    try:
+        repo = config.get("repo") or repo_of(type("P", (), {"config": {}, "root": root})())
+    except RuntimeError:
+        repo = config.get("repo") or f"owner/{root.name}"
+    owner = repo.split("/")[0]
+    name = config.get("name") or ask("The product's name", option("--name"), root.name)
+    pitch = ask("Its one-line pitch, in plain words", option("--pitch"),
+                (config.get("facts") or {}).get("pitch"))
+    if not pitch and not config.get("facts", {}).get("pitch"):
+        fail('say what it does in one line: --pitch "<what it does, for whom>"')
+    languages = [c for c in (ask("Its languages, the first its own", option("--languages"), "en") or "en").split(",") if c]
+    site = ask("Its website: none, gh-pages, folder:<dir> or repo:<owner/name>", option("--site"), "none")
+    if not (site in ("none", "gh-pages") or site.startswith(("folder:", "repo:"))):
+        fail("--site is none, gh-pages, folder:<dir> or repo:<owner/name>")
+    names = set(os.listdir(root))
+    copies = pathlib.PurePosixPath(config["vendor"]).parent.as_posix() if config.get("vendor") else \
+        ("Scripts" if "Scripts" in names and "scripts" not in names else "scripts")
+    existing = config_file is not None
+
+    # The config: only what's missing.
+    new = dict(config)
+    new.setdefault("repo", repo)
+    new.setdefault("name", name)
+    new.setdefault("kind", kind)
+    new.setdefault("vendor", f"{copies}/docs-kit")
+    if len(languages) > 1:
+        new.setdefault("languages", {c: {"name": c} for c in languages[1:]})
+    lang = new.setdefault("lang", {"source": languages[0]}) if len(languages) > 1 or tables_in(root) else new.get("lang")
+    if lang is not None and "strings" not in lang and tables_in(root):
+        lang["strings"] = tables_in(root)
+    if lang is not None:
+        lang.setdefault("vendor", f"{copies}/lang-kit")
+    facts = new.setdefault("facts", {})
+    facts.setdefault("version", {"from": "tag"})
+    if pitch:
+        facts.setdefault("pitch", pitch)
+    new.setdefault("plan", {"pages": "docs/phases", "index": "docs/phases/README.md", "doc": "docs/PLAN.md",
+                            "project": {"owner": owner}})
+    pictured = kind in ("mac", "iphone", "mac+iphone", "web-view")
+    if pictured:
+        shots = new.setdefault("shots", {"vendor": f"{copies}/shots-kit.swift"})
+        if site.startswith("folder:"):
+            shots.setdefault("site", site.split(":", 1)[1])
+    if site.startswith("folder:") or site == "gh-pages":
+        new.setdefault("site", {"url": f"https://{owner.lower()}.github.io/{repo.split('/')[1]}/", "folder": "docs",
+                                "templates": {languages[0]: "docs/_template.html"}})
+    added = [k for k in new if new.get(k) != config.get(k)]
+    if not existing:
+        done.append(f"wrote {CONFIGS[0]}: " + ", ".join(added))
+        if not dry:
+            (root / CONFIGS[0]).write_text(json.dumps(new, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    elif [k for k in added if k not in ("kind", "vendor")]:
+        # Its config is the project's own: say what init would add, never write it.
+        kept.append(f"{config_file.name} (it hasn't {', '.join(k for k in added if k not in ('kind', 'vendor'))}: "
+                    "`product-kit doctor` says which matter)")
+
+    # The plan first, then the docs, the README, the list of pictures: each only where the
+    # project has none at all.
+    has_plan = "plan" in config or (root / "docs/PLAN.md").exists()
+    if not has_plan:
+        write("docs/PLAN.md", f"""# The plan
+
+{pitch}
+
+This file is the map, written with the owner: what {name} is for, who it's for, and the order to
+build it in. Each phase has a page in [`phases/`](phases/), a GitHub milestone and a phase issue;
+each thing to build is an issue under it. [`phases/README.md`](phases/README.md) lists the order,
+written by `docs-kit plan sync`.
+
+## The phases
+
+| Phase | What it gives | Page |
+|---|---|---|
+| **1. First version** | What {name} does first, for the person who uses it | [01-first-version](phases/01-first-version.md) |
+""")
+    if not has_plan:
+        write("docs/phases/01-first-version.md", f"""# Phase 1: First version
+
+**Milestone:** Phase 1: First version · **Status:** Now
+
+**Goal:** {pitch}
+
+Write with the owner what this phase builds, then open an issue for each item under its phase
+issue, and run `docs-kit plan sync`.
+""")
+    if not (root / "docs").is_dir() or not existing:
+        write("docs/README.md", f"""# {name}'s docs
+
+{pitch}
+
+| Page | What it's for |
+|---|---|
+""")
+    readme_spots = "\n".join(filter(None, [
+        f"**<!-- product-kit: pitch -->{pitch}<!-- /product-kit -->**" if pitch else "",
+        "",
+        "Version <!-- product-kit: version --><!-- /product-kit -->",
+    ]))
+    write("README.md", f"# {name}\n\n{readme_spots}\n")
+    for code in languages[1:]:
+        rtl = code.split("-")[0] in {"ar", "he", "fa", "ur", "ps", "yi", "dv", "ckb", "sd", "ug"}
+        body = f"# {name}\n\n<!-- product-kit: pitch --><!-- /product-kit -->\n"
+        write(f"README.{code}.md", f'<div dir="rtl">\n\n{body}\n</div>\n' if rtl else body)
+    has_list = "shots" in config or (root / "shots/shots.json").exists()
+    if pictured and not has_list:
+        manifest = {"shots": [], "assets": []}
+        if kind in ("mac", "mac+iphone"):
+            manifest = {"app": f"/Applications/{name}.app", "bundle": f"com.{owner.lower()}.{name.replace(' ', '')}",
+                        "shots": [], "assets": []}
+        elif kind == "iphone":
+            manifest = {"driver": {"command": ["product-kit", "driver", "ios-simulator", "--app", f"build/{name}.app",
+                                               "--bundle", f"com.{owner.lower()}.{name.replace(' ', '')}"]},
+                        "shots": [], "assets": []}
+        place = (site.split(":", 1)[1] + "/" if site.startswith("folder:") else "") + "shots/shots.json"
+        write(place, json.dumps(manifest, indent=2) + "\n")
+    if site.startswith("folder:"):
+        folder = site.split(":", 1)[1]
+        write(f"{folder}/index.html", f"""<!doctype html>
+<html lang="{languages[0]}">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{name}</title></head>
+<body>
+<h1>{name}</h1>
+<p><!-- product-kit: pitch -->{pitch}<!-- /product-kit --></p>
+<p>Version <!-- product-kit: version --><!-- /product-kit --></p>
+</body>
+</html>
+""")
+        write(f"{folder}/docs/_template.html", """<!doctype html>
+<html lang="{{lang}}"><head><meta charset="utf-8"><title>{{title}}</title></head>
+<body>{{nav}}{{content}}</body></html>
+""")
+        write(f"{folder}/assets/.keep", "")
+
+    # Local CI: the checks, with the project's own copies of the tools.
+    jobs = (["python3 -I {c}/docs-kit plan check"] if "plan" in new else []) + \
+        ["python3 -I {c}/docs-kit check \"${{CI_BASE:-origin/main}}\""]
+    if lang is not None and lang.get("strings"):
+        jobs.append("python3 -I {c}/lang-kit strings")
+    if len(languages) > 1:
+        jobs.append("python3 -I {c}/lang-kit check \"${{CI_BASE:-origin/main}}\"")
+    write(".claude/ci.conf.sh", "# .claude/ci.conf.sh: this project's CI for `local-ci <pr>` (shared-mac), set up by\n"
+          "# `product-kit init`: the docs, the plan and every language, with the project's own copies.\n\n"
+          "CI_JOBS=(product)\n\nci_job_product() {\n" + "\n".join(f"  {j.format(c=copies)} || return 1" for j in jobs)
+          + "\n}\n")
+
+    # The project's copies of the tools, for its CI: a project that has them keeps them, and
+    # `product-kit vendor --all` brings them up to date.
+    if existing and Project(root, config_file).copies():
+        kept.append("its copies of the tools")
+    elif not dry:
+        for tool, wanted in (("docs-kit", True), ("lang-kit", lang is not None), ("shots-kit", pictured)):
+            if not wanted:
+                continue
+            cmd = [str(HERE / "shots-kit"), "vendor", "--repo", str(root)] if tool == "shots-kit" else \
+                ["python3", "-I", str(HERE / tool), "vendor"]
+            r = subprocess.run(cmd, cwd=root, capture_output=True, text=True)
+            done.append(r.stdout.strip().splitlines()[-1] if r.returncode == 0 and r.stdout.strip()
+                        else f"{tool} vendor: {(r.stdout + r.stderr).strip()[-200:]}")
+    else:
+        done.append("the tools' copies in " + copies + "/")
+
+    # Its CLAUDE.md says when to run what.
+    claude = root / "CLAUDE.md"
+    section = """
+## product-kit
+
+The plan, docs, languages, pictures and facts are product-kit's (`.product-kit.json`; the
+`product-kit` skill says when to run what). Before a pull request, `product-kit status`; for a
+release, `product-kit status --release`. The plan changes with `docs-kit plan sync`, then
+`docs-kit plan check`.
+"""
+    if (not claude.exists() or "product-kit" not in claude.read_text(errors="replace")) and not fill:
+        missing.append("a product-kit section in CLAUDE.md")
+    elif not claude.exists() or "product-kit" not in claude.read_text(errors="replace"):
+        done.append("added a product-kit section to CLAUDE.md")
+        if not dry:
+            with claude.open("a", encoding="utf-8") as f:
+                f.write(section if claude.exists() else f"# {name}\n" + section)
+    else:
+        kept.append("CLAUDE.md's product-kit section")
+
+    say(f"init: {name} ({kind}){' (dry run: nothing written)' if dry else ''}")
+    for line in done:
+        say(f"  {line}")
+    if kept:
+        say(f"  kept as they are: {', '.join(kept)}")
+    if missing:
+        say(f"  it has no {', '.join(missing)}: `product-kit init --fill` writes them")
+    board = new["plan"].get("project", {}).get("number")
+    if "plan" in config and board:
+        say("Next: `product-kit doctor`.")
+    else:
+        say("Next: write the plan with the owner (docs/PLAN.md, docs/phases/); "
+            + ("then `docs-kit plan init`" if board else "make its project board (`gh project create`), put its "
+               "number in plan.project.number, then `docs-kit plan init`")
+            + "; then `product-kit doctor`.")
+    return 0
+
+
 def gap(args: list[str]) -> int:
     """A gap found in a project, as an entry in product-kit's Inbox, for the next "scan the inbox"."""
     what = next((a for a in args if not a.startswith("--") and (args.index(a) == 0 or args[args.index(a) - 1] not in ("--why", "--project"))), None)
@@ -829,6 +1132,8 @@ def main(argv: list[str]) -> int:
         return status(rest)
     if command == "facts":
         return facts_run(rest)
+    if command == "init":
+        return init(rest)
     if command == "gap":
         return gap(rest)
     if command == "publish":
