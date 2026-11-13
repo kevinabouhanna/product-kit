@@ -2,6 +2,7 @@
 // them together, and `shots-kit vendor` writes them into one file for a project's CI.
 
 import AppKit
+import AVFoundation
 import ApplicationServices
 import CryptoKit
 import ScreenCaptureKit

@@ -71,11 +71,12 @@
 // own AccessibilityAudit.swift when it has one (`shots.audit`).
 
 import AppKit
+import AVFoundation
 import ApplicationServices
 import CryptoKit
 import ScreenCaptureKit
 
-let shotsKitVersion = "2.7.0"
+let shotsKitVersion = "2.8.0"
 
 // MARK: - Config
 

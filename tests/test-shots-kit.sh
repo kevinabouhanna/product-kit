@@ -331,8 +331,8 @@ expect "a built video out of date is made again, in every language" \
   'grep -q "made 2: assets/tour.mp4, assets/fr/tour.mp4" <<<"$out" && [ "$(cat "$VID/assets/fr/tour.mp4")" = "a tour in fr" ] && [ "$(cat "$VID/assets/tour.mp4")" = "a tour in en" ]'
 expect "its made is the windows' version now" 'python3 -c "import json,sys; a=json.load(open(sys.argv[1]))[\"assets\"]; sys.exit(a[0][\"made\"] != \"1.2\" or a[1][\"made\"] != \"1.0\")" "$VID/shots/shots.json"'
 expect "a video made by hand is named, never remade" 'grep -q "assets/brag.mp4 (made from 1.0, its windows from 1.2)" <<<"$out" && [ ! -f "$VID/assets/brag.mp4" ]'
-expect "a recorded one with no driver says what it needs" \
-  'python3 -c "import json,sys; m=json.load(open(sys.argv[1])); m[\"assets\"][0].update(how=\"recorded\", made=\"1.0\", record={\"shot\": \"home\"}); json.dump(m, open(sys.argv[1], \"w\"))" "$VID/shots/shots.json" && v | grep -q "needs the manifest.s .driver."'
+expect "a recorded one with neither a driver nor an app says what it needs" \
+  'python3 -c "import json,sys; m=json.load(open(sys.argv[1])); m[\"assets\"][0].update(how=\"recorded\", made=\"1.0\", record={\"shot\": \"home\"}); m.pop(\"app\"); json.dump(m, open(sys.argv[1], \"w\"))" "$VID/shots/shots.json" && v | grep -q "needs the manifest.s .driver., or its .app."'
 
 [ "$fails" -eq 0 ] && echo "shots-kit: every test passed" || echo "shots-kit: $fails failed"
 exit $((fails > 0))

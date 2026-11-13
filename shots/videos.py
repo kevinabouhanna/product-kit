@@ -101,24 +101,39 @@ def main(argv: list[str]) -> int:
                 else:
                     spec = asset.get("record", {})
                     driver = manifest.get("driver", {}).get("command")
-                    if not driver:
-                        raise RuntimeError("a recorded video needs the manifest's `driver` (a Mac app's comes later)")
                     shot = entries.get(spec.get("shot"))
                     if not shot:
                         raise RuntimeError(f"record.shot {spec.get('shot')!r} isn't a shot in the manifest")
-                    request = {"action": "record", "shot": shot, "language": code or "en", "video": str(path),
-                               "seconds": spec.get("seconds", 8), "repo": str(repo)}
-                    r = subprocess.run(driver, cwd=repo, input=json.dumps(request), capture_output=True, text=True,
-                                       timeout=600)
-                    if r.returncode != 0:
-                        raise RuntimeError(f"the driver failed (exit {r.returncode}): {r.stderr.strip()[-300:]}")
+                    if driver:
+                        request = {"action": "record", "shot": shot, "language": code or "en", "video": str(path),
+                                   "seconds": spec.get("seconds", 8), "repo": str(repo)}
+                        r = subprocess.run(driver, cwd=repo, input=json.dumps(request), capture_output=True, text=True,
+                                           timeout=600)
+                        if r.returncode != 0:
+                            raise RuntimeError(f"the driver failed (exit {r.returncode}): {r.stderr.strip()[-300:]}")
+                    elif manifest.get("app"):
+                        # A Mac app's window, recorded by shots-kit itself, in the VM when the
+                        # project takes its pictures there (product-kit#65).
+                        kit = pathlib.Path(__file__).resolve().parent.parent / "bin" / "shots-kit"
+                        cmd = [str(kit), "video", spec["shot"], "--out", str(path.relative_to(site)),
+                               "--seconds", str(spec.get("seconds", 8)), "--language", code or "en", "--repo", str(repo)]
+                        if site != repo:
+                            cmd += ["--site", str(site)]
+                        r = subprocess.run(cmd, cwd=repo, capture_output=True, text=True, timeout=1800)
+                        if r.returncode != 0:
+                            raise RuntimeError(f"the recording failed: {(r.stdout + r.stderr).strip()[-400:]}")
+                    else:
+                        raise RuntimeError("a recorded video needs the manifest's `driver`, or its `app`")
                 if not path.exists() or path.stat().st_size == 0:
                     raise RuntimeError(f"nothing was written at {out}")
                 remade.append(out)
             except (RuntimeError, subprocess.TimeoutExpired, OSError) as e:
                 failed.append(f"{out}: {e}")
-        if not dry and newest and not any(f.startswith(file) for f in failed):
-            asset["made"] = newest
+        # Made now from the app as its windows' records are: their own version, not the one a
+        # hand-made copy was last remade from (`.made.txt`).
+        current = max((v for v in (versions.get(f"{w}.txt") for w in shows) if v), key=parts, default=newest)
+        if not dry and current and not any(f.startswith(file) for f in failed):
+            asset["made"] = current
             asset.pop("stale", None)
             changed = True
     if changed:

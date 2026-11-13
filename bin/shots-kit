@@ -11,6 +11,8 @@
 #   shots-kit source               the program as one file, as `vendor` writes it
 #   shots-kit migrate              folds the README's list (shots.repo_assets) into the
 #                                  manifest, when the site is on the same branch
+#   shots-kit video <shot> --out <file> [--seconds N]   records a Mac app's shot as an MP4
+#   shots-kit poster <video> <image> [--at SECONDS]     a still from a video
 #   shots-kit videos [names] [--all] [--dry-run]
 #                                  remakes the videos made by script (recorded or built)
 #                                  whose windows changed, in every language; names the rest
@@ -25,7 +27,7 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 src="$here/../shots"
 
 case "${1:-help}" in
-  help|-h|--help) sed -n '3,22p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  help|-h|--help) sed -n '3,24p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
 esac
 
 # The program's files, in order; as one file, they're what a project keeps a copy of.

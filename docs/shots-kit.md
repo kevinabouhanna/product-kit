@@ -152,8 +152,9 @@ remade by `shots-kit videos` whenever a window they show changes, in every langu
 ```
 
 - **`recorded`**: the app driven through a shot (its `open` and `click`) and recorded for
-  `seconds`, by the manifest's driver: `product-kit driver ios-simulator` records the simulator
-  as an MP4, out of sight. A Mac app's recorder is #65.
+  `seconds`, as an MP4, out of sight: a Mac app's window by shots-kit itself with ScreenCaptureKit
+  (`shots-kit video`, in the VM like its pictures, #65); an iPhone app's by
+  `product-kit driver ios-simulator`; another app's by its manifest's driver.
 - **`built`**: put together by a command from the current pictures and the app's own text
   (Hyperframes, Remotion, ffmpeg; a poster from its video): `{out}` is the file to write,
   `{code}` the language, `{site}` and `{repo}` the checkouts.
@@ -207,6 +208,8 @@ changes nothing.
 | `audit [names]` | Each window checked for what VoiceOver can't name, with real data in its lists. |
 | `readme` | Copies the site's pictures the README uses into it, in every language. Files only. |
 | `coverage` | **The asset check**: every image, GIF and video the site, the README and the docs use is a shot's picture or listed, with the windows it shows (`shows` and `made`) or why it shows none (`none`). Files only, so it runs in CI. |
+| `video <shot> --out <file> [--seconds N] [--language CODE]` | Records a Mac app's shot as an MP4 (`--out` from the site): the window opened, placed and in front, its clicks while it records (#65). In the VM with `--vm` or `vm.default`. `videos` runs it for each recorded video. |
+| `poster <video> <image> [--at SECONDS]` | A still from a video, JPEG or PNG by its name: a video's poster, `built` from it (#65). Files only. |
 | `videos [names] [--all] [--dry-run]` | Remakes the videos made by script (`recorded`, `built`) whose windows changed, in every language, and sets `made`; names the hand-made ones that are out of date (#44). |
 | `alt [names] [--since REF]` | Each picture's alt text wherever it's shown, in every language, and what changed in its window's tree since `REF`: the packet for rewriting the alt text after a retake (#39). Files only. |
 | `coverage-test` | Where `coverage` looks for media, on made-up pages. |

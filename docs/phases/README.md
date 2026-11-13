@@ -7,7 +7,6 @@ Each phase is a milestone on GitHub and a page here; each plan is an issue, in t
 
 | Order | Plan | Phase |
 |---|---|---|
-| 14 | #44 Videos made by script, in every language | [Phase 2: Any Mac or iPhone project](02-any-mac-or-iphone-project.md) |
 | 14.5 | #65 Recorded videos of a Mac app (ScreenCaptureKit, in the VM), and NetworkMonitor's live.mp4 by script | [Phase 2: Any Mac or iPhone project](02-any-mac-or-iphone-project.md) |
 | 15 | #45 App Store pages and release notes, in every language | [Phase 2: Any Mac or iPhone project](02-any-mac-or-iphone-project.md) |
 | 16 | #46 Apps built on web views (home-control), and the website itself checked | [Phase 2: Any Mac or iPhone project](02-any-mac-or-iphone-project.md) |
