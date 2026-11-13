@@ -48,7 +48,9 @@ or not.
 |---|---|
 | `docs-kit plan init [--dry-run]` | Sets a new project up, and is safe to run again: the board's fields (Level, Order, Horizon, and Start and Target when named), a milestone for each page and each page's Milestone line, the labels, the root issue, a phase issue per phase, and three views; then `sync`. |
 | `docs-kit plan sync [--dry-run]` | Makes GitHub follow the tree, and the generated files follow GitHub: see below. Prints every change in plain words; `--dry-run` only prints them. |
-| `docs-kit plan check` | Fails when anything `sync` would change, or anything it can't (below). One line when all is well. For CI. |
+| `docs-kit plan check` | Fails when anything `sync` would change, or anything it can't (below). One line when all is well (and one more when ideas are waiting, which never fails it). For CI. |
+| `docs-kit plan ideas [--json]` | The ideas waiting in the board's Ideas view, oldest first: title, note, when and by whom, item id. [Ideas](#ideas). |
+| `docs-kit plan ideas --take <item> --phase "<milestone>" …` | Takes one idea into the plan as an issue, with its spec. [Ideas](#ideas). |
 | `docs-kit plan index [--check]` | Writes the index (`sync` does too), or says whether it's up to date. |
 | `docs-kit plan status [--write]` | Each page's Milestone and Status line as GitHub has it; `--write` puts it on the pages (and adds the line where a page's title is its milestone's). |
 
@@ -94,6 +96,9 @@ Status. It reads GitHub with `gh` (signed in), 100 issues at a time, and writes 
 | **Now · Next · Later** | A board of the open items, a column per Horizon, in Order. |
 | **Roadmap** | A timeline of the open phases and items, grouped by milestone, in Order. |
 | **In order** | A table of the open items and steps, grouped by Horizon, in Order. |
+| **Ideas** | A table of the board's drafts: the owner's inbox (made when it's missing, never changed). |
+
+A filter put right keeps the view's layout.
 
 GitHub's API can't move a view: the first tab is what a project opens on. Drag **Now · Next ·
 Later** to the left of the others once, on the board's page.
@@ -105,6 +110,37 @@ and the root issue's description share a table per Horizon (`| Order | Plan | Ph
 Order, then the milestone's due date, then number) and a Done line of the finished phases. The
 index keeps the text above its first `## ` heading; neither has a date, so each changes only
 when GitHub does.
+
+## Ideas
+
+The owner has ideas between sessions. They go in the board's **Ideas** view, by hand, with no
+session needed: **+ Add item** at the bottom of the table, a title, Enter. That makes a *draft*
+on the board: no issue yet, nothing in the plan, nothing `plan check` fails on. Clicking the
+draft opens it, to add a note (what it's for, an example, a link).
+
+When the owner says **"scan the ideas"** (or "look at my ideas", "take the ideas into the
+plan"), the session:
+
+1. runs `docs-kit plan ideas` (oldest first, with each note and item id);
+2. writes a spec for each, in plain words: **Why** (with the owner's note quoted), **What**,
+   **Done when**. It asks only where the intent is genuinely unclear;
+3. decides each one's place: its phase (milestone), and either a Horizon and Order (a new item)
+   or the item it's a step of;
+4. takes each in:
+
+   ```
+   docs-kit plan ideas --take <item id> --phase "<milestone>" --horizon <Now|Next|Later> --order <N>      [--set Track=<value>] --body-file <spec.md> [--title "<clearer title>"]
+   docs-kit plan ideas --take <item id> --phase "<milestone>" --parent <item number> --body-file <spec.md>
+   ```
+
+   The draft becomes an issue in the repository (it stays on the board, the same card), with
+   the spec as its description, under its phase issue (or the item), in the milestone, with its
+   values; then `sync` runs;
+5. says each new item on its phase's page, runs `docs-kit plan check`, and tells the owner where
+   each idea went (its number, phase, horizon and place).
+
+`--set Field=value` sets any field of the board (a Track, a date); `--order` takes a decimal to
+slot one between two.
 
 ## Changing the plan
 
