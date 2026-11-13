@@ -13,6 +13,12 @@
   product-kit vendor --all [--dry-run] [--only NAME,… [--upkeep ISSUE]]
                               brings every project's copies up to this version: an issue, a
                               branch, the copies, a pull request, in each project that's behind
+  product-kit doctor [--json] what the project shows people that product-kit can't account for
+                              yet: text, pictures, languages, copies, its own checks
+  product-kit gap "<what>" --why "<why>"
+                              puts something product-kit couldn't do here in its Inbox
+  product-kit publish [--dry-run]
+                              the project's own places to publish to (`publish` in its config)
   product-kit bump <version>  sets the one version every tool carries
   product-kit version
 
@@ -25,6 +31,7 @@ import re
 import shlex
 import subprocess
 import sys
+import time
 
 HERE = pathlib.Path(__file__).resolve().parent
 KIT = HERE.parent
@@ -345,6 +352,208 @@ def vendor_all(args: list[str]) -> int:
     return status
 
 
+# The doctor: what's in the project that product-kit can't account for (#37)
+
+SKIP_DIRS = {".git", ".claude", "build", "Build", "DerivedData", "node_modules", "Pods", "target", "dist", ".build",
+             "vendor", "out", ".venv", "venv", "__pycache__"}
+TABLE_SUFFIXES = {".strings", ".stringsdict", ".xcstrings", ".resx", ".po", ".arb", ".ftl", ".xliff", ".xlf"}
+TABLE_FOLDERS = {"locales", "locale", "i18n", "lang", "langs", "translations", "l10n"}
+MEDIA = re.compile(r"""(?:!\[[^\]]*\]\(\s*<?|<(?:img|source|video)\b[^>]*?\b(?:src|poster)=["'])"""
+                   r"""([^)"'\s>]+\.(?:png|jpe?g|gif|webp|svg|mp4|webm|mov))""", re.I)
+
+
+def checkout_root() -> pathlib.Path:
+    r = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True)
+    if r.returncode != 0:
+        fail("not in a git checkout")
+    return pathlib.Path(r.stdout.strip())
+
+
+def files_under(root: pathlib.Path):
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS and not d.endswith((".app", ".xcassets"))]
+        for name in filenames:
+            yield pathlib.Path(dirpath) / name
+
+
+def text_tables(root: pathlib.Path) -> list[str]:
+    """Files that look like tables of an app's text: Apple's, .NET's, gettext's, Flutter's,
+    Fluent's, XLIFF, Qt's, and JSON in a folder of translations."""
+    found = []
+    for f in files_under(root):
+        rel = f.relative_to(root)
+        suffix = f.suffix.lower()
+        in_lproj = any(part.endswith(".lproj") for part in rel.parts[:-1])
+        in_folder = any(part.lower() in TABLE_FOLDERS for part in rel.parts[:-1])
+        if suffix in TABLE_SUFFIXES or (in_lproj and suffix in (".strings", ".stringsdict")) \
+                or (suffix == ".json" and in_folder):
+            found.append(str(rel))
+        elif suffix == ".ts" and f.stat().st_size < 5_000_000 and "<TS" in f.read_text(errors="replace")[:400]:
+            found.append(str(rel))
+    return sorted(found)
+
+
+def covered_by(pattern: str, path: str, languages: list[str]) -> bool:
+    return any(path == pattern.replace("{code}", code) for code in languages)
+
+
+def doctor_findings(root: pathlib.Path) -> list[tuple[str, str]]:
+    """Each thing the project shows people that product-kit doesn't account for, and what to do."""
+    found: list[tuple[str, str]] = []
+    config_file = next((root / c for c in CONFIGS if (root / c).exists()), None)
+    if not config_file:
+        return [("no .product-kit.json", "write one (docs/product-kit.md); `product-kit init` will (#42)")]
+    try:
+        config = json.loads(config_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        return [(f"{config_file.name} doesn't read: {e}", "put the JSON right")]
+    p = Project(root, config_file)
+
+    if "plan" not in config:
+        found.append(("no plan", "write docs/PLAN.md and a page per phase with the owner, add `plan` to the config, "
+                                 "then `docs-kit plan init`"))
+
+    behind = p.behind()
+    if behind:
+        found.append(("its copies of " + ", ".join(f"{t.name} ({t.version_of(path) or '?'})" for t, path in behind)
+                      + f" are behind {kit_version()}", f"`product-kit vendor --all --only {p.name}`"))
+
+    # Tables of the app's text nothing checks.
+    lang = config.get("lang", {})
+    source = lang.get("source") or "en"
+    codes = [source] + [c for c in config.get("languages", {}) if c != source]
+    pattern = (lang.get("strings") or {}).get("path")
+    source_path = (lang.get("strings") or {}).get("source_path")
+    loose = [t for t in text_tables(root)
+             if not (pattern and covered_by(pattern, t, codes)) and t != source_path
+             and not t.endswith("Glossary.json")]
+    if loose:
+        shown = ", ".join(loose[:6]) + (f" and {len(loose) - 6} more" if len(loose) > 6 else "")
+        found.append((f"text lang-kit doesn't check: {shown}",
+                      "name the table in `lang.strings` (docs/lang-kit.md), or read a kind it doesn't know with "
+                      "your own reader (`\"format\": \"command\"`, `lang.strings.read`); then `product-kit gap` if "
+                      "product-kit should read it itself"))
+
+    # Pictures, GIFs and videos.
+    has_list = "shots" in config or (root / "shots/shots.json").exists()
+    if has_list:
+        r = subprocess.run([str(HERE / "shots-kit"), "coverage", "--repo", str(root)], capture_output=True, text=True)
+        if r.returncode == 1:
+            first = next((l for l in r.stdout.splitlines() if l.startswith("  ")), "").strip()
+            found.append((f"the asset check fails: {first}", "`shots-kit coverage` says what's unlisted and how to list it"))
+        elif r.returncode not in (0, 1):
+            found.append(("the asset check can't run: " + (r.stdout.strip().splitlines() or ["?"])[-1],
+                          "`shots-kit coverage`"))
+    else:
+        pages = [root / "README.md"] + sorted((root / "docs").rglob("*.md") if (root / "docs").is_dir() else [])
+        media = {m.group(1) for page in pages if page.exists()
+                 for m in MEDIA.finditer(page.read_text(errors="replace")) if "://" not in m.group(1)}
+        if media:
+            found.append((f"{len(media)} pictures or videos in the README and docs, in no list",
+                          "list them in shots/shots.json with the screens they show (docs/shots-kit.md), so a change "
+                          "to a screen can't leave one stale"))
+
+    # Each language, everywhere the project shows text.
+    readme = root / "README.md"
+    docs_pages = [f for f in (root / config.get("docs", "docs")).glob("*.md")] if (root / config.get("docs", "docs")).is_dir() else []
+    developer = set(config.get("developer_pages", []))
+    user_pages = [f for f in docs_pages if str(f.relative_to(root)) not in developer and f.name != "PLAN.md"]
+    for code in codes[1:]:
+        missing = []
+        if readme.exists() and not (root / f"README.{code}.md").exists():
+            missing.append(f"README.{code}.md")
+        if user_pages and not (root / config.get("docs", "docs") / code).is_dir():
+            missing.append(f"{config.get('docs', 'docs')}/{code}/")
+        if pattern and not (root / pattern.replace("{code}", code)).exists():
+            missing.append(pattern.replace("{code}", code))
+        if missing:
+            found.append((f"{code} has no {', '.join(missing)}", f"`lang-kit add {code}` lists what a language needs"))
+
+    # The project's own checks.
+    for check in config.get("checks", []):
+        name, run = check.get("name", "a check"), check.get("run")
+        if not isinstance(run, list) or not run:
+            found.append((f"the check \"{name}\" has no `run`", "give it the command to run, as a list"))
+            continue
+        r = subprocess.run(run, cwd=root, capture_output=True, text=True)
+        if r.returncode != 0:
+            said = (r.stdout.strip() or r.stderr.strip()).splitlines()
+            found.append((f"{name} fails" + (f": {said[-1]}" if said else ""), check.get("fix", f"`{' '.join(run)}`")))
+    return found
+
+
+def doctor(args: list[str]) -> int:
+    root = pathlib.Path(args[args.index("--repo") + 1]).resolve() if "--repo" in args else checkout_root()
+    found = doctor_findings(root)
+    if "--json" in args:
+        print(json.dumps([{"what": w, "do": d} for w, d in found], indent=2, ensure_ascii=False))
+    elif not found:
+        say(f"doctor: {root.name}: nothing unaccounted for")
+    else:
+        say(f"doctor: {root.name}: {len(found)} to look at")
+        for what, todo in found:
+            say(f"  - {what}\n    → {todo}")
+        say("  Something product-kit can't do here? Handle it in this project (an extension: docs/product-kit.md), "
+            "then `product-kit gap \"<what>\" --why \"<why>\"`.")
+    return 1 if found else 0
+
+
+def gap(args: list[str]) -> int:
+    """A gap found in a project, as an entry in product-kit's Inbox, for the next "scan the inbox"."""
+    what = next((a for a in args if not a.startswith("--") and (args.index(a) == 0 or args[args.index(a) - 1] not in ("--why", "--project"))), None)
+    if not what:
+        fail('usage: product-kit gap "<what product-kit can\'t do>" --why "<what the project needed>" [--project NAME]')
+    why = args[args.index("--why") + 1] if "--why" in args and args.index("--why") + 1 < len(args) else ""
+    if "--project" in args:
+        project = args[args.index("--project") + 1]
+    else:
+        r = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True)
+        project = pathlib.Path(r.stdout.strip()).name if r.returncode == 0 else "a project"
+    own = json.loads((KIT / CONFIGS[0]).read_text(encoding="utf-8")).get("plan", {}).get("project", {})
+    owner, number = own.get("owner"), own.get("number")
+    if not owner or not number:
+        fail("product-kit's own config names no project board")
+    board = json.loads(gh("api", "graphql", "-f", 'query=query { user(login: "%s") { projectV2(number: %d) { id url '
+                          'field(name: "Kind") { ... on ProjectV2SingleSelectField { id options { id name } } } } } }'
+                          % (owner, int(number))))["data"]["user"]["projectV2"]
+    title = f"Gap ({project}): {what}"
+    body = (f"**Found in** {project}, {time.strftime('%Y-%m-%d')}, by `product-kit gap`.\n\n"
+            + (f"**What it needed:** {why}\n\n" if why else "")
+            + "Handled there for now with an extension of its own. When a second project needs it, it moves into "
+              "product-kit (docs/product-kit.md, the gap routine).")
+    made = json.loads(gh("api", "graphql", "-f", "query=mutation { addProjectV2DraftIssue(input: { projectId: %s, title: %s, "
+                         "body: %s }) { projectItem { id } } }" % (json.dumps(board["id"]), json.dumps(title), json.dumps(body))))
+    item = made["data"]["addProjectV2DraftIssue"]["projectItem"]["id"]
+    kind = board.get("field") or {}
+    feature = next((o["id"] for o in kind.get("options", []) if o["name"] == "Feature"), None)
+    if feature:
+        gh("api", "graphql", "-f", "query=mutation { updateProjectV2ItemFieldValue(input: { projectId: %s, itemId: %s, "
+           "fieldId: %s, value: { singleSelectOptionId: %s } }) { clientMutationId } }"
+           % (json.dumps(board["id"]), json.dumps(item), json.dumps(kind["id"]), json.dumps(feature)))
+    say(f"gap: \"{title}\" is in product-kit's Inbox ({board['url']}); it's fitted into the plan at the next scan of the inbox")
+    return 0
+
+
+def publish(args: list[str]) -> int:
+    """The project's own places to publish to (`publish` in its config), in order (#37)."""
+    root = checkout_root()
+    config_file = next((root / c for c in CONFIGS if (root / c).exists()), None)
+    steps = json.loads(config_file.read_text()).get("publish", []) if config_file else []
+    if not steps:
+        say("publish: the config names no places of its own (`publish`); the docs, wiki and site have their own commands")
+        return 0
+    for step in steps:
+        name, run = step.get("name", "a step"), step.get("run") or []
+        say(f"publish: {name}")
+        if "--dry-run" in args:
+            continue
+        r = subprocess.run(run, cwd=root)
+        if r.returncode != 0:
+            say(f"publish: {name} failed (exit {r.returncode}); the steps after it didn't run")
+            return 1
+    return 0
+
+
 def main(argv: list[str]) -> int:
     command = argv[0] if argv else "help"
     rest = argv[1:]
@@ -361,6 +570,12 @@ def main(argv: list[str]) -> int:
         return list_projects("--json" in rest)
     if command == "vendor":
         return vendor_all(rest)
+    if command == "doctor":
+        return doctor(rest)
+    if command == "gap":
+        return gap(rest)
+    if command == "publish":
+        return publish(rest)
     if command == "bump":
         if len(rest) != 1:
             fail("usage: product-kit bump <version>")

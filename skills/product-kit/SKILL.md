@@ -29,6 +29,8 @@ the interface changed) → videos → publish (README, wiki, website) → native
 | A new image, GIF or video | List it: `shots-kit coverage` until it passes | It names the windows it shows, or why none |
 | A release | `lang-kit review <last tag>` on the release's issue; `docs-kit site <site>` from the tag; `shots-kit update` once installed | Videos it flags are remade only when asked |
 | A new language | `lang-kit add <code> [name]` | Follow the order it prints |
+| Starting work in a project, or unsure what's missing | `product-kit doctor` | Do what each line says |
+| product-kit can't do something the project needs | Handle it in the project with an extension (`docs/product-kit.md`), then `product-kit gap "<what>" --why "<why>"` | It moves into product-kit when a second project needs it |
 | A changed heading | `docs-kit anchors` | An app may link to it: `<a id="…">` keeps an old address |
 | product-kit's own tools changed | In product-kit: `product-kit bump <version>`, then `product-kit vendor --all` | Each project's pull request merges by its own CI and rules |
 

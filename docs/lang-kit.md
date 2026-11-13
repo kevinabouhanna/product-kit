@@ -34,7 +34,8 @@ there's no `.product-kit.json`.
 |---|---|
 | `languages` | `{"<code>": {"name": "简体中文", "site": "zh"}}`: each translation. Shared with docs-kit. |
 | `lang.source` | The source language's code (`en`; else `site.language`). |
-| `lang.strings.format` | `strings` (Apple), `xcstrings` (Xcode's string catalog), `json` (nested objects flattened with dots), `resx` (.NET), `ts` (Qt). |
+| `lang.strings.format` | `strings` (Apple), `xcstrings` (Xcode's string catalog), `json` (nested objects flattened with dots), `resx` (.NET), `ts` (Qt), or `command`: a kind lang-kit doesn't read, read by the project's own command (#37). |
+| `lang.strings.read` | With `command`: the command, from the checkout, `{file}` for a file holding the table and `{code}` for its language: `["python3", "scripts/read-properties", "{file}", "{code}"]`. It prints the table as JSON, `{"key": "text"}`, and exits 0. Its placeholders are compared as `printf`'s unless `lang.strings.placeholders` says otherwise. |
 | `lang.strings.path` | Where a language's table is, with `{code}`: `Resources/Localization/{code}.lproj/Localizable.strings`. One file for every language with `xcstrings`. |
 | `lang.strings.source_path` | The source language's table, where it isn't `path` with its code (`Strings.resx` beside `Strings.{code}.resx`). |
 | `lang.strings.keys.scan` | Globs of source files to read the text to translate from, when the source language has no table of its own (NetworkMonitor's keys are the English, written inside `L("…")`). Without it, the keys are the source table's (or, for Qt, every message the tables list). |

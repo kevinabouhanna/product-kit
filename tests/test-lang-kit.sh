@@ -190,6 +190,34 @@ EOF
 commit
 expect "ts: unfinished is missing, obsolete left out" 'out="$(lks strings)"; grep -q "1 missing, such as: Switch to %1" <<<"$out" && ! grep -q Old <<<"$out"'
 
+# A kind of table lang-kit doesn't know, read by the project's own command (#37).
+P="$TMP/own"; repo "$P"
+mkdir -p i18n scripts
+cat >.product-kit.json <<'EOF'
+{"languages": {"it": {}}, "lang": {"strings": {"format": "command", "path": "i18n/{code}.properties",
+ "read": ["python3", "scripts/read-properties", "{file}", "{code}"]}}}
+EOF
+cat >scripts/read-properties <<'EOF'
+import json, sys
+table = {}
+for line in open(sys.argv[1], encoding="utf-8"):
+    if "=" in line and not line.startswith("#"):
+        k, v = line.split("=", 1); table[k.strip()] = v.strip()
+print(json.dumps(table))
+EOF
+printf 'quit = Quit\nopen = Open %%@\n' >i18n/en.properties
+printf 'quit = Esci\n' >i18n/it.properties
+commit
+expect "a reader of the project's own: its table is held like any other" 'lks strings | grep -q "1 missing, such as: open"'
+cat >.product-kit.json <<'EOF'
+{"languages": {"it": {}}, "lang": {"strings": {"format": "command", "path": "i18n/{code}.properties"}}}
+EOF
+expect "format command without read says what it needs" 'lks strings 2>&1 | grep -q "needs lang.strings.read"'
+cat >.product-kit.json <<'EOF'
+{"languages": {"it": {}}, "lang": {"strings": {"format": "command", "path": "i18n/{code}.properties", "read": ["false"]}}}
+EOF
+expect "a reader that fails is named" 'lks strings 2>&1 | grep -q "lang.strings.read failed (exit 1)"'
+
 # --------------------------------------------------------------------------
 echo "--- the rest"
 cd "$TMP/app" || exit 1
