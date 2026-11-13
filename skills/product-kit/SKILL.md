@@ -27,7 +27,8 @@ the interface changed) → videos → publish (README, wiki, website) → native
 | No docs are needed after all | `No docs needed: <why>` in the pull request, then `docs-kit check` again | Pages for developers don't count |
 | A window a picture shows changes | After the release is installed: `shots-kit check`, then `shots-kit update` | Rewrite the alt text of each retaken picture from the diff it prints |
 | A new image, GIF or video | List it: `shots-kit coverage` until it passes | It names the windows it shows, or why none |
-| A release | `lang-kit review <last tag>` on the release's issue; `docs-kit site <site>` from the tag; `shots-kit update` once installed | Videos it flags are remade only when asked |
+| Before a pull request | `product-kit status` | Do each `✗`; the `·` lines are to look at |
+| A release | `product-kit status --release`: the review, the site's docs, the pictures | Videos it flags are remade only when asked |
 | A new language | `lang-kit add <code> [name]` | Follow the order it prints |
 | Starting work in a project, or unsure what's missing | `product-kit doctor` | Do what each line says |
 | product-kit can't do something the project needs | Handle it in the project with an extension (`docs/product-kit.md`), then `product-kit gap "<what>" --why "<why>"` | It moves into product-kit when a second project needs it |

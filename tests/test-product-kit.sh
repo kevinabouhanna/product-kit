@@ -137,5 +137,30 @@ expect "a gap goes in product-kit's Inbox, as a draft with the project's name" \
   'grep -q "is in product-kit.s Inbox" <<<"$out" && grep -q "addProjectV2DraftIssue" "$TMP/gh.log" && grep -q "Gap (doc): reading .properties tables" "$TMP/gh.log"'
 expect "gap needs to say what" 'pk gap | grep -q "usage: product-kit gap"'
 
+echo "--- status: what's out of date (#38)"
+ST="$TMP/st"; mkdir -p "$ST/Resources/en.lproj" "$ST/Resources/fr.lproj" "$ST/shots" "$ST/docs/fr"
+git -C "$ST" init -q
+cat >"$ST/.product-kit.json" <<'EOF'
+{"repo": "me/st", "languages": {"fr": {"name": "Français"}},
+ "lang": {"strings": {"format": "strings", "path": "Resources/{code}.lproj/Localizable.strings",
+                      "source_path": "Resources/en.lproj/Localizable.strings"}}}
+EOF
+printf '"Quit" = "Quit";\n"Open" = "Open";\n' >"$ST/Resources/en.lproj/Localizable.strings"
+printf '"Quit" = "Quitter";\n' >"$ST/Resources/fr.lproj/Localizable.strings"
+echo '{"render": {"command": ["true"]}, "shots": []}' >"$ST/shots/shots.json"
+echo "# St" >"$ST/README.md"; echo "# St" >"$ST/README.fr.md"
+git -C "$ST" add -A && git -C "$ST" commit -q -m start
+out="$(cd "$ST" && python3 -I "$KIT" status --release --base HEAD 2>&1)"; code=$?
+expect "status names a translation missing, as Claude's to write, and fails" \
+  'grep -q "✗ claude: the app.s text isn.t whole in every language" <<<"$out" && [ $code -eq 1 ]'
+expect "and what's only to look at, which doesn't fail" 'grep -q "· claude: no plan" <<<"$out"'
+expect "--release adds the release's steps: the review, and pictures the app draws" \
+  'grep -q "post .lang-kit review" <<<"$out" && grep -q "the pictures the app draws" <<<"$out"'
+printf '"Quit" = "Quitter";\n"Open" = "Ouvrir";\n' >"$ST/Resources/fr.lproj/Localizable.strings"
+expect "with nothing failing, it exits 0, whatever's left to look at" \
+  '(cd "$ST" && python3 -I "$KIT" status --base HEAD >/dev/null 2>&1)'
+expect "--json says who does each, and whether it fails" \
+  'json="$(cd "$ST" && python3 -I "$KIT" status --json --base HEAD)"; python3 -c "import json,sys; d=json.loads(sys.argv[1]); sys.exit(not d or any(set(i) != {\"what\",\"do\",\"who\",\"fails\"} for i in d))" "$json"'
+
 [ "$fails" -eq 0 ] && echo "product-kit: every test passed" || echo "product-kit: $fails failed"
 exit $((fails > 0))

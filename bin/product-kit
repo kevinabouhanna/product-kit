@@ -15,6 +15,9 @@
                               branch, the copies, a pull request, in each project that's behind
   product-kit doctor [--json] what the project shows people that product-kit can't account for
                               yet: text, pictures, languages, copies, its own checks
+  product-kit status [--release] [--json] [--base REF]
+                              what's out of date, across all of it: each with the command that
+                              fixes it, or the words Claude writes, or what only Kevin can do
   product-kit gap "<what>" --why "<why>"
                               puts something product-kit couldn't do here in its Inbox
   product-kit publish [--dry-run]
@@ -397,9 +400,10 @@ def covered_by(pattern: str, path: str, languages: list[str]) -> bool:
     return any(path == pattern.replace("{code}", code) for code in languages)
 
 
-def doctor_findings(root: pathlib.Path) -> list[tuple[str, str]]:
-    """Each thing the project shows people that product-kit doesn't account for, and what to do."""
-    found: list[tuple[str, str]] = []
+def doctor_findings(root: pathlib.Path) -> list[tuple]:
+    """Each thing the project shows people that product-kit doesn't account for, and what to do;
+    a third element, "fails", for a check that fails rather than something to look at."""
+    found: list[tuple] = []
     config_file = next((root / c for c in CONFIGS if (root / c).exists()), None)
     if not config_file:
         return [("no .product-kit.json", "write one (docs/product-kit.md); `product-kit init` will (#42)")]
@@ -440,10 +444,11 @@ def doctor_findings(root: pathlib.Path) -> list[tuple[str, str]]:
         r = subprocess.run([str(HERE / "shots-kit"), "coverage", "--repo", str(root)], capture_output=True, text=True)
         if r.returncode == 1:
             first = next((l for l in r.stdout.splitlines() if l.startswith("  ")), "").strip()
-            found.append((f"the asset check fails: {first}", "`shots-kit coverage` says what's unlisted and how to list it"))
+            found.append((f"the asset check fails: {first}", "`shots-kit coverage` says what's unlisted and how to list it",
+                          "fails"))
         elif r.returncode not in (0, 1):
             found.append(("the asset check can't run: " + (r.stdout.strip().splitlines() or ["?"])[-1],
-                          "`shots-kit coverage`"))
+                          "`shots-kit coverage`", "fails"))
     else:
         pages = [root / "README.md"] + sorted((root / "docs").rglob("*.md") if (root / "docs").is_dir() else [])
         media = {m.group(1) for page in pages if page.exists()
@@ -473,12 +478,13 @@ def doctor_findings(root: pathlib.Path) -> list[tuple[str, str]]:
     for check in config.get("checks", []):
         name, run = check.get("name", "a check"), check.get("run")
         if not isinstance(run, list) or not run:
-            found.append((f"the check \"{name}\" has no `run`", "give it the command to run, as a list"))
+            found.append((f"the check \"{name}\" has no `run`", "give it the command to run, as a list", "fails"))
             continue
         r = subprocess.run(run, cwd=root, capture_output=True, text=True)
         if r.returncode != 0:
             said = (r.stdout.strip() or r.stderr.strip()).splitlines()
-            found.append((f"{name} fails" + (f": {said[-1]}" if said else ""), check.get("fix", f"`{' '.join(run)}`")))
+            found.append((f"{name} fails" + (f": {said[-1]}" if said else ""), check.get("fix", f"`{' '.join(run)}`"),
+                          "fails"))
     return found
 
 
@@ -486,16 +492,117 @@ def doctor(args: list[str]) -> int:
     root = pathlib.Path(args[args.index("--repo") + 1]).resolve() if "--repo" in args else checkout_root()
     found = doctor_findings(root)
     if "--json" in args:
-        print(json.dumps([{"what": w, "do": d} for w, d in found], indent=2, ensure_ascii=False))
+        print(json.dumps([{"what": f[0], "do": f[1]} for f in found], indent=2, ensure_ascii=False))
     elif not found:
         say(f"doctor: {root.name}: nothing unaccounted for")
     else:
         say(f"doctor: {root.name}: {len(found)} to look at")
-        for what, todo in found:
+        for what, todo, *_ in found:
             say(f"  - {what}\n    → {todo}")
         say("  Something product-kit can't do here? Handle it in this project (an extension: docs/product-kit.md), "
             "then `product-kit gap \"<what>\" --why \"<why>\"`.")
     return 1 if found else 0
+
+
+# What's out of date (#38)
+
+def tool_check(argv: list[str], root: pathlib.Path, env=None) -> tuple[int, str]:
+    r = subprocess.run(argv, cwd=root, capture_output=True, text=True, env=env)
+    return r.returncode, (r.stdout + r.stderr).strip()
+
+
+def first_lines(text: str, n: int = 2) -> str:
+    lines = [l.strip() for l in text.splitlines() if l.strip() and not l.startswith("shots-kit: building")]
+    return " ".join(lines[:n])[:300]
+
+
+def status_items(root: pathlib.Path, base: str, release: bool) -> list[dict]:
+    """Everything out of date, each with who does it: `run` (a command does it), `claude` (words
+    to write), `kevin` (only a person can); and whether it fails (a check that doesn't pass)."""
+    items: list[dict] = []
+
+    def add(what, do, who, fails):
+        items.append({"what": what, "do": do, "who": who, "fails": fails})
+
+    config_file = next((root / c for c in CONFIGS if (root / c).exists()), None)
+    config = json.loads(config_file.read_text(encoding="utf-8")) if config_file else {}
+
+    # The doctor: checks that fail, and what to look at.
+    for f in doctor_findings(root):
+        fails = len(f) > 2 and f[2] == "fails"
+        who = "run" if "`product-kit vendor" in f[1] else "claude"
+        add(f[0], f[1], who, fails)
+
+    if config_file:
+        # The plan and GitHub.
+        if "plan" in config:
+            if subprocess.run(gh_command() + ["auth", "status"], capture_output=True).returncode != 0:
+                add("the plan can't be checked: gh isn't signed in", "`gh auth login`", "kevin", False)
+            else:
+                code, out = tool_check(["python3", "-I", str(HERE / "docs-kit"), "plan", "check"], root,
+                                       env={**os.environ, "DOCS_KIT_GH": " ".join(gh_command())})
+                if code != 0:
+                    add("the plan and GitHub disagree: " + first_lines(out, 1), "`docs-kit plan sync`, then put right what "
+                        "`docs-kit plan check` lists", "run", True)
+        # The docs, for what the app says or does.
+        if config.get("check", {}).get("needs_docs"):
+            code, out = tool_check(["python3", "-I", str(HERE / "docs-kit"), "check", base], root)
+            if code != 0:
+                add("a change needs its docs: " + first_lines(out), "write the page in `docs/` (every language), or "
+                    "`No docs needed: <why>` in the pull request", "claude", True)
+        # Every language.
+        if config.get("lang", {}).get("strings"):
+            code, out = tool_check(["python3", "-I", str(HERE / "lang-kit"), "strings"], root)
+            if code != 0:
+                add("the app's text isn't whole in every language: " + first_lines(out), "translate what "
+                    "`lang-kit strings` lists, with the glossary", "claude", True)
+        if config.get("languages"):
+            code, out = tool_check(["python3", "-I", str(HERE / "lang-kit"), "check", base], root)
+            if code != 0:
+                add("an English page changed without its translations: " + first_lines(out), "change each copy, or "
+                    "`No translation needed: <why>` in the pull request", "claude", True)
+
+    if release:
+        tag = subprocess.run(["git", "describe", "--tags", "--abbrev=0"], cwd=root, capture_output=True, text=True)
+        last = tag.stdout.strip() or "<the last release's tag>"
+        has_pictures = "shots" in config or (root / "shots/shots.json").exists()
+        manifest = root / "shots/shots.json"
+        drawn = manifest.exists() and '"render"' in manifest.read_text(errors="replace")
+        if has_pictures and drawn:
+            add("the pictures the app draws", "`shots-kit check`, then `shots-kit update`: it draws them, no app or "
+                "screen; commit what it redrew", "run", False)
+        elif has_pictures:
+            add("the pictures, once the release is installed", "`shots-kit check`, then `shots-kit update` (in the VM); "
+                "rewrite the alt text of each retaken picture from its diff; videos it flags are remade only when asked",
+                "claude", False)
+        if [c for c in config.get("languages", {}) if c != config.get("lang", {}).get("source", "en")]:
+            add("the native review", f"post `lang-kit review {last}` on the release's issue; nothing waits on it",
+                "run", False)
+        if config.get("site"):
+            add("the website's docs pages", "`docs-kit site <site checkout>` from the release's tag, in the site's "
+                "pull request", "run", False)
+        if config.get("wiki"):
+            add("the wiki", "rebuilt by its workflow on the push to main (`docs-kit wiki`)", "run", False)
+    return items
+
+
+def status(args: list[str]) -> int:
+    root = pathlib.Path(args[args.index("--repo") + 1]).resolve() if "--repo" in args else checkout_root()
+    base = args[args.index("--base") + 1] if "--base" in args and args.index("--base") + 1 < len(args) \
+        else os.environ.get("PRODUCT_KIT_BASE", "origin/main")
+    items = status_items(root, base, "--release" in args)
+    if "--json" in args:
+        print(json.dumps(items, indent=2, ensure_ascii=False))
+    elif not items:
+        say(f"status: {root.name}: all current")
+    else:
+        failing = sum(i["fails"] for i in items)
+        say(f"status: {root.name}: {len(items)} to do" + (f", {failing} failing" if failing else ""))
+        for who in ("run", "claude", "kevin"):
+            for i in (i for i in items if i["who"] == who):
+                mark = "✗" if i["fails"] else "·"
+                say(f"  {mark} {who}: {i['what']}\n      → {i['do']}")
+    return 1 if any(i["fails"] for i in items) else 0
 
 
 def gap(args: list[str]) -> int:
@@ -572,6 +679,8 @@ def main(argv: list[str]) -> int:
         return vendor_all(rest)
     if command == "doctor":
         return doctor(rest)
+    if command == "status":
+        return status(rest)
     if command == "gap":
         return gap(rest)
     if command == "publish":

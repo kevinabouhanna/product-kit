@@ -89,3 +89,23 @@ A session that meets something product-kit can't do:
    Inbox (a draft on its board, Kind Feature), to be fitted into the plan at the next "scan the
    inbox";
 3. when a second project needs it, it moves into product-kit, and the extensions go.
+
+## What's out of date: `status` (#38)
+
+`product-kit status [--release] [--json] [--base REF]` runs every part's checks and lists only
+what's out of date, each with who does it:
+
+| | |
+|---|---|
+| `run` | a command does it, named |
+| `claude` | words to write: a translation, a page, alt text |
+| `kevin` | only a person can: a sign-in, a decision |
+
+A `✗` fails (a check that doesn't pass: the plan and GitHub, the docs a change needs
+(`docs-kit check` against `--base`, `origin/main` by default), every language's text and pages,
+the asset check, the project's own `checks`); a `·` is to look at (what `doctor` finds). It
+exits 1 only when something fails, and says `status: <project>: all current` when nothing's
+left. `--release` adds a release's steps: the pictures (drawn by the app, or retaken once it's
+installed), the native review (`lang-kit review <last tag>`), the website's docs pages, the
+wiki. A session runs it before a pull request and before a release; each project's CI keeps the
+checks it runs with its own copies of the tools.
