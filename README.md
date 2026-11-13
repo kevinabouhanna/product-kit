@@ -14,8 +14,8 @@ claude plugin install product-kit@kevinabouhanna --scope user
 ```
 
 The plugin is listed in the `kevinabouhanna` marketplace (kevinabouhanna/claude-parallel-sessions).
-It puts `product-kit`, `docs-kit`, `lang-kit` and `shots-kit` on PATH and gives every session the skill for each
-part. They share one config, `.product-kit.json`, with the languages listed once.
+It puts `product-kit`, `docs-kit`, `lang-kit` and `shots-kit` on PATH and gives every session one short skill, `product-kit`,
+that says which command to run when (#34). They share one config, `.product-kit.json`, with the languages listed once.
 
 ## The parts
 

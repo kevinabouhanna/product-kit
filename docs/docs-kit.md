@@ -22,7 +22,7 @@ marketplace (it was a plugin of its own in claude-parallel-sessions until produc
 claude plugin install product-kit@kevinabouhanna --scope user
 ```
 
-That puts `docs-kit` on PATH and gives every session the `docs-kit` skill. `docs-kit` is one
+That puts `docs-kit` on PATH and gives every session the `product-kit` skill. `docs-kit` is one
 Python file using the standard library only, so it runs anywhere: on this Mac, in `local-ci`,
 in a GitHub workflow. Each project keeps a copy at `Scripts/docs-kit` (`docs-kit vendor`), so
 its CI needs no plugin.

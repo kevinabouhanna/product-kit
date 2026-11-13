@@ -18,6 +18,11 @@ expect "lang runs lang-kit" '"$KIT" lang help | grep -q "lang-kit review"'
 expect "shots runs shots-kit" '"$KIT" shots help | grep -q "shots-kit vendor"'
 expect "an unknown command fails" '! "$KIT" nope 2>/dev/null'
 expect "the plugin is named product-kit" 'grep -q "\"name\": \"product-kit\"" "$ROOT/.claude-plugin/plugin.json"'
+# Every session in every project reads a skill's description, so it stays short (#34).
+expect "one skill, its description under 60 words" \
+  '[ "$(ls "$ROOT/skills")" = product-kit ] && [ "$(sed -n "s/^description: //p" "$ROOT/skills/product-kit/SKILL.md" | wc -w)" -lt 60 ]'
+expect "every reference the skill names is there" \
+  '( for f in $(grep -o "docs/[a-z-]*\.md" "$ROOT/skills/product-kit/SKILL.md" | sort -u); do [ -f "$ROOT/$f" ] || exit 1; done )'
 
 echo "--- one version"
 V="$("$KIT" version)"
