@@ -50,3 +50,42 @@ on, and saying so in the pull request:
 | Version | Moved | A project gets |
 |---|---|---|
 | shots-kit 1.4.0 (#32) | The byte and network units, and the menu-bar readout's width | `shots.masks` and `shots.keep_width`, when its pictures are of an app's windows |
+
+## The doctor
+
+`product-kit doctor [--json]` (in a project, or `--repo DIR`) lists what the project shows people
+that product-kit doesn't account for yet, each with what to do, and exits 1 when there's any:
+
+- no config, or no plan;
+- copies of the tools behind this version;
+- tables of the app's text that nothing checks (Apple's `.strings`, `.stringsdict`,
+  `.xcstrings`, `.resx`, gettext, Flutter's `.arb`, Fluent, XLIFF, Qt, JSON in a folder of
+  translations), outside `lang.strings`;
+- the asset check failing, or pictures and videos in the README and docs with no list;
+- a language with no README, docs or table of its own;
+- the project's own `checks` that fail.
+
+One line when there's nothing: `doctor: <project>: nothing unaccounted for`.
+
+## Room for what a project needs (#37)
+
+What's particular to a project goes in its config, and what product-kit can't do yet goes in a
+small script of the project's own, run at a named point:
+
+| Point | Key | The project's script |
+|---|---|---|
+| A kind of text table lang-kit doesn't read | `lang.strings.format: "command"`, `lang.strings.read` | prints the table as JSON ([lang-kit](lang-kit.md)) |
+| Values on screen that change by themselves | `shots.masks` | a pattern and what it stands for ([shots-kit](shots-kit.md)) |
+| An app shots-kit can't open itself | the manifest's `driver` | opens each screen, answers with its elements ([shots-kit](shots-kit.md#a-driver-of-the-projects-choosing)) |
+| A check of its own | `checks`: `[{"name", "run": [...], "fix"}]` | exits 0 when all is well; `doctor` (and `status`) run it |
+| A place of its own to publish to | `publish`: `[{"name", "run": [...]}]` | `product-kit publish` runs each in order, stopping at the first that fails |
+
+## The gap routine
+
+A session that meets something product-kit can't do:
+
+1. handles it in that project the same day, with an extension above;
+2. says so: `product-kit gap "<what>" --why "<what the project needed>"` puts it in product-kit's
+   Inbox (a draft on its board, Kind Feature), to be fitted into the plan at the next "scan the
+   inbox";
+3. when a second project needs it, it moves into product-kit, and the extensions go.

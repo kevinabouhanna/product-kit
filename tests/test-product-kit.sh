@@ -41,7 +41,11 @@ echo "$*" >>"$(dirname "$0")/gh.log"
 case "$1 $2" in
   "issue create") echo "https://github.com/me/app/issues/7" ;;
   "pr create") echo "https://github.com/me/app/pull/8" ;;
-  "api graphql") if [[ "$*" == *mutation* ]]; then echo '{"data": {}}'; else echo '{"data": {"repository": {"a": {"id": "I_up"}, "b": {"id": "I_new"}}}}'; fi ;;
+  "api graphql")
+    if [[ "$*" == *addProjectV2DraftIssue* ]]; then echo '{"data": {"addProjectV2DraftIssue": {"projectItem": {"id": "D1"}}}}'
+    elif [[ "$*" == *mutation* ]]; then echo '{"data": {}}'
+    elif [[ "$*" == *"projectV2(number"* ]]; then echo '{"data": {"user": {"projectV2": {"id": "P1", "url": "https://github.com/users/me/projects/1", "field": {"id": "K1", "options": [{"id": "F1", "name": "Feature"}]}}}}}'
+    else echo '{"data": {"repository": {"a": {"id": "I_up"}, "b": {"id": "I_new"}}}}'; fi ;;
   *) echo '{}' ;;
 esac
 EOF
@@ -102,6 +106,36 @@ out="$(pk vendor --all --only planned --upkeep 5)"
 git clone -q -b product-kit-${V//./-}-7 "$TMP/origins/planned.git" "$TMP/planned-pushed" 2>/dev/null
 expect "given once, the upkeep item takes the issue and stays in the project's config" \
   'grep -q "planned: https://github.com/me/app/pull/8" <<<"$out" && grep -q "names #5 as the item" <<<"$out" && grep -q "\"upkeep\": 5" "$TMP/planned-pushed/.product-kit.json"'
+
+echo "--- the doctor, a gap, publishing (#37)"
+DOC="$TMP/doc"; mkdir -p "$DOC/Resources/en.lproj" "$DOC/Resources/fr.lproj" "$DOC/docs"
+git -C "$DOC" init -q
+cat >"$DOC/.product-kit.json" <<'EOF'
+{"repo": "me/doc", "languages": {"fr": {"name": "Français"}},
+ "lang": {"strings": {"format": "strings", "path": "Resources/{code}.lproj/Localizable.strings"}},
+ "checks": [{"name": "the app's links", "run": ["sh", "-c", "echo 2 links go nowhere; exit 1"], "fix": "make links"}],
+ "publish": [{"name": "the store's text", "run": ["sh", "-c", "echo published > published.txt"]}]}
+EOF
+for c in en fr; do : >"$DOC/Resources/$c.lproj/Localizable.strings"; : >"$DOC/Resources/$c.lproj/InfoPlist.strings"; done
+echo '![Main](docs/main.png) <img src="docs/tour.gif"> ![Badge](https://example.com/b.svg)' >"$DOC/README.md"
+echo "How to use it" >"$DOC/docs/using.md"
+out="$(cd "$DOC" && python3 -I "$KIT" doctor 2>&1)"
+expect "the doctor names a project with no plan" 'grep -q "no plan" <<<"$out"'
+expect "and text nothing checks, the table lang-kit has left out" 'grep -q "text lang-kit doesn.t check: Resources/en.lproj/InfoPlist.strings, Resources/fr.lproj/InfoPlist.strings" <<<"$out"'
+expect "and pictures in no list, not counting another site's" 'grep -q "2 pictures or videos in the README and docs, in no list" <<<"$out"'
+expect "and a language's missing README and docs" 'grep -q "fr has no README.fr.md, docs/fr/" <<<"$out"'
+expect "and the project's own check, with its fix" 'grep -q "the app.s links fails: 2 links go nowhere" <<<"$out" && grep -q "→ make links" <<<"$out"'
+expect "the doctor exits 1 when there's something to look at" '(cd "$DOC" && python3 -I "$KIT" doctor >/dev/null 2>&1); [ $? -eq 1 ]'
+expect "--json says the same for scripts" 'json="$(cd "$DOC" && python3 -I "$KIT" doctor --json)"; python3 -c "import json,sys; sys.exit(len(json.loads(sys.argv[1])) != 5)" "$json"'
+CLEAN="$TMP/clean"; mkdir -p "$CLEAN"; git -C "$CLEAN" init -q
+echo '{"repo": "me/clean", "plan": {"pages": "docs/phases"}}' >"$CLEAN/.product-kit.json"
+expect "a project with nothing unaccounted for says so in a line" '(cd "$CLEAN" && python3 -I "$KIT" doctor) | grep -q "doctor: clean: nothing unaccounted for"'
+expect "publish runs the project's own steps" '(cd "$DOC" && python3 -I "$KIT" publish) | grep -q "publish: the store.s text" && grep -q published "$DOC/published.txt"'
+: >"$TMP/gh.log"
+out="$(cd "$DOC" && pk gap "reading .properties tables" --why "a Java tool's text")"
+expect "a gap goes in product-kit's Inbox, as a draft with the project's name" \
+  'grep -q "is in product-kit.s Inbox" <<<"$out" && grep -q "addProjectV2DraftIssue" "$TMP/gh.log" && grep -q "Gap (doc): reading .properties tables" "$TMP/gh.log"'
+expect "gap needs to say what" 'pk gap | grep -q "usage: product-kit gap"'
 
 [ "$fails" -eq 0 ] && echo "product-kit: every test passed" || echo "product-kit: $fails failed"
 exit $((fails > 0))
