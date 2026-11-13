@@ -1,27 +1,371 @@
-#!/bin/bash
-#
-# product-kit: everything a product shows people, kept current and in every language
-# (kevinabouhanna/product-kit, docs/PLAN.md). One command with a part for each job:
-#
-#   product-kit docs …     the docs: docs/ is the source of the site's docs pages and the
-#                          wiki (docs-kit; `docs-kit …` on PATH is the same)
-#   product-kit lang …     every language held to its glossary, pages with their copies,
-#                          the reviewer's list, a new language (lang-kit; same as `lang-kit …`)
-#   product-kit shots …    the website's pictures of a macOS app kept current, and every
-#                          image, GIF and video listed (shots-kit; same as `shots-kit …`)
-#   product-kit version
-set -euo pipefail
-here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+#!/usr/bin/env python3
+"""product-kit: everything a product shows people, kept current and in every language
+(kevinabouhanna/product-kit, docs/PLAN.md). One command with a part for each job:
 
-usage() { sed -n '3,12p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
-shots_version() { sed -n 's/^let shotsKitVersion = "\(.*\)"$/\1/p' "$here/../shots/shots-kit.swift"; }
+  product-kit docs …          the plan and the docs: docs/ is the source of the site's docs
+                              pages and the wiki (docs-kit; `docs-kit …` on PATH is the same)
+  product-kit lang …          every language held to its glossary, pages with their copies,
+                              the reviewer's list, a new language (lang-kit; same as `lang-kit …`)
+  product-kit shots …         every picture, GIF and video listed and kept current
+                              (shots-kit; same as `shots-kit …`)
+  product-kit projects        the projects that use product-kit, and whether their copies of
+                              the tools are this version
+  product-kit vendor --all [--dry-run] [--only NAME,… [--upkeep ISSUE]]
+                              brings every project's copies up to this version: an issue, a
+                              branch, the copies, a pull request, in each project that's behind
+  product-kit bump <version>  sets the one version every tool carries
+  product-kit version
 
-case "${1:-help}" in
-  docs) shift; exec python3 -I "$here/docs-kit" "$@" ;;
-  lang) shift; exec python3 -I "$here/lang-kit" "$@" ;;
-  shots) shift; exec "$here/shots-kit" "$@" ;;
-  version|--version)
-    echo "product-kit: docs $(python3 -I "$here/docs-kit" version), lang $(python3 -I "$here/lang-kit" version), shots $(shots_version)" ;;
-  help|-h|--help) usage ;;
-  *) echo "product-kit: no command '$1'" >&2; usage >&2; exit 2 ;;
-esac
+The reference is docs/product-kit.md."""
+
+import json
+import os
+import pathlib
+import re
+import shlex
+import subprocess
+import sys
+
+HERE = pathlib.Path(__file__).resolve().parent
+KIT = HERE.parent
+CONFIGS = (".product-kit.json", ".docs-kit.json")
+
+
+# The tools a project keeps a copy of: where the copy goes by default, which config section
+# says it has the tool, and how a copy says its version.
+class Tool:
+    def __init__(self, name, source, section, default, version_line):
+        self.name, self.source, self.section, self.default = name, KIT / source, section, default
+        self.version_line = re.compile(version_line, re.M)
+
+    def version_of(self, path: pathlib.Path) -> str | None:
+        if not path.exists():
+            return None
+        m = self.version_line.search(path.read_text(encoding="utf-8", errors="replace"))
+        return m.group(1) if m else None
+
+    @property
+    def version(self) -> str:
+        return self.version_of(self.source) or "?"
+
+    def copy_in(self, config: dict) -> str | None:
+        """Where a project's config puts its copy, or None when it doesn't use the tool."""
+        if self.section is None:
+            return config.get("vendor", self.default)
+        if self.section not in config:
+            return None
+        return config[self.section].get("vendor", self.default)
+
+
+TOOLS = [
+    Tool("docs-kit", "bin/docs-kit", None, "Scripts/docs-kit", r'^VERSION = "([^"]+)"'),
+    Tool("lang-kit", "bin/lang-kit", "lang", "Scripts/lang-kit", r'^VERSION = "([^"]+)"'),
+    Tool("shots-kit", "shots/shots-kit.swift", "shots", "Scripts/shots-kit.swift", r'^let shotsKitVersion = "([^"]+)"'),
+]
+
+
+def say(text: str) -> None:
+    print(text, flush=True)
+
+
+def fail(text: str, status: int = 2) -> None:
+    print(f"product-kit: {text}", file=sys.stderr)
+    sys.exit(status)
+
+
+def kit_version() -> str:
+    versions = {t.name: t.version for t in TOOLS}
+    if len(set(versions.values())) != 1:
+        fail("the tools carry different versions (" + ", ".join(f"{n} {v}" for n, v in versions.items())
+             + "): run `product-kit bump <version>`", 1)
+    return next(iter(versions.values()))
+
+
+def bump(version: str) -> None:
+    if not re.fullmatch(r"\d+\.\d+\.\d+", version):
+        fail("a version is three numbers: 2.1.0")
+    for tool in TOOLS:
+        text = tool.source.read_text(encoding="utf-8")
+        line = tool.version_line.search(text)
+        new = line.group(0).replace(line.group(1), version)
+        tool.source.write_text(text[:line.start()] + new + text[line.end():], encoding="utf-8")
+    say(f"product-kit: every tool is {version}")
+
+
+# The projects
+
+def roots() -> list[pathlib.Path]:
+    given = os.environ.get("PRODUCT_KIT_PROJECTS")
+    return [pathlib.Path(p).expanduser() for p in given.split(":")] if given else [pathlib.Path("~/Work").expanduser()]
+
+
+class Project:
+    def __init__(self, root: pathlib.Path, config_file: pathlib.Path):
+        self.root, self.config_file = root, config_file
+        self.config = json.loads(config_file.read_text(encoding="utf-8"))
+        self.name = root.name
+
+    def copies(self, at: pathlib.Path | None = None) -> list[tuple[Tool, pathlib.Path]]:
+        """Each tool this project keeps a copy of, and where (in `at`, a checkout of it)."""
+        base = at or self.root
+        found = []
+        for tool in TOOLS:
+            rel = tool.copy_in(self.config)
+            if rel and (base / rel).exists():
+                found.append((tool, base / rel))
+        return found
+
+    def behind(self, at: pathlib.Path | None = None) -> list[tuple[Tool, pathlib.Path]]:
+        out = []
+        for tool, path in self.copies(at):
+            same = path.read_bytes() == tool.source.read_bytes()
+            if tool.name == "shots-kit" and not self.config.get("shots", {}).get("audit"):
+                audit = path.parent / "AccessibilityAudit.swift"
+                same = same and audit.exists() and audit.read_bytes() == (KIT / "shots/AccessibilityAudit.swift").read_bytes()
+            if not same:
+                out.append((tool, path))
+        return out
+
+
+def projects() -> list[Project]:
+    found = []
+    for root in roots():
+        if not root.is_dir():
+            continue
+        for depth in ("*", "*/*"):
+            for config in sorted(root.glob(f"{depth}/{CONFIGS[0]}")) + sorted(root.glob(f"{depth}/{CONFIGS[1]}")):
+                project = config.parent
+                if ".claude" in project.parts or any(p.root == project for p in found) or project == KIT:
+                    continue
+                if not (project / ".git").exists():
+                    continue
+                try:
+                    found.append(Project(project, config))
+                except (OSError, json.JSONDecodeError) as e:
+                    say(f"{project.name}: can't read {config.name}: {e}")
+    return sorted(found, key=lambda p: p.name.lower())
+
+
+def list_projects(as_json: bool) -> int:
+    version = kit_version()
+    rows = []
+    for p in projects():
+        copies = [{"tool": t.name, "path": str(path.relative_to(p.root)), "version": t.version_of(path)}
+                  for t, path in p.copies()]
+        behind = {t.name for t, _ in p.behind()}
+        rows.append({"project": p.name, "path": str(p.root), "copies": copies, "behind": sorted(behind)})
+    if as_json:
+        print(json.dumps({"version": version, "projects": rows}, indent=2))
+        return 0
+    say(f"product-kit {version}")
+    for r in rows:
+        if not r["copies"]:
+            say(f"  {r['project']}: no copies (it runs the plugin's tools)")
+            continue
+        parts = [f"{c['tool']} {c['version'] or '?'}" + (" (behind)" if c["tool"] in r["behind"] else "") for c in r["copies"]]
+        say(f"  {r['project']}: " + ", ".join(parts) + ("" if r["behind"] else ": up to date"))
+    return 0
+
+
+# Bringing a project's copies up to date
+
+def gh_command() -> list[str]:
+    return shlex.split(os.environ.get("PRODUCT_KIT_GH", "gh"))
+
+
+def gh(*args: str, cwd: pathlib.Path | None = None) -> str:
+    for attempt in range(4):
+        r = subprocess.run(gh_command() + list(args), capture_output=True, text=True, cwd=cwd)
+        if r.returncode == 0:
+            return r.stdout
+        if attempt < 3 and re.search(r"timeout|connection reset|EOF|502|503", r.stderr):
+            continue
+        raise RuntimeError(f"gh {' '.join(args[:2])}: {r.stderr.strip() or r.stdout.strip()}")
+    return ""
+
+
+def git(*args: str, cwd: pathlib.Path) -> str:
+    r = subprocess.run(["git", *args], capture_output=True, text=True, cwd=cwd)
+    if r.returncode != 0:
+        raise RuntimeError(f"git {' '.join(args[:2])}: {r.stderr.strip()}")
+    return r.stdout
+
+
+def repo_of(p: Project) -> str:
+    if p.config.get("repo"):
+        return p.config["repo"]
+    url = git("remote", "get-url", "origin", cwd=p.root).strip()
+    m = re.search(r"[:/]([^/:]+/[^/]+?)(?:\.git)?$", url)
+    if not m:
+        raise RuntimeError(f"can't tell the GitHub repository from {url}")
+    return m.group(1)
+
+
+def default_branch(p: Project) -> str:
+    try:
+        return git("symbolic-ref", "--short", "refs/remotes/origin/HEAD", cwd=p.root).strip().split("/", 1)[1]
+    except RuntimeError:
+        return "main"
+
+
+def older(version: str | None, than: str) -> bool:
+    def parts(v):
+        return tuple(int(x) for x in re.findall(r"\d+", v or "0"))[:3]
+    return parts(version) < parts(than)
+
+
+# What a project's config needs when a version moved something out of the code into config:
+# each migration takes the project's main checkout, the checkout being changed, its config and
+# the old copies' versions; it changes the config in place and says what it did, or returns None.
+def migrate_shots_masks(main: pathlib.Path, checkout: pathlib.Path, config: dict, old: dict) -> str | None:
+    """shots-kit 1.4.0 (#32) moved the network units and the menu-bar readout's width out of
+    the code: a project whose pictures are of an app's windows keeps them in its config."""
+    if "shots" not in config or not older(old.get("shots-kit"), "1.4.0"):
+        return None
+    shots = config["shots"]
+    # The manifest: on the site (from the main checkout), or in the project's own checkout.
+    site = shots.get("site")
+    manifest = ((main / site).resolve() if site else checkout) / "shots/shots.json"
+    try:
+        if "app" not in json.loads(manifest.read_text(encoding="utf-8")):
+            return None   # drawn by the project (`render`): nothing is masked
+    except (OSError, json.JSONDecodeError):
+        pass
+    added = []
+    if "masks" not in shots:
+        shots["masks"] = [{"pattern": r"#\s?(bytes|[KMGT]?B/s|[KMGT]bps|bps|[KMGT]?B)(?![A-Za-z])", "as": "# ‹unit›"}]
+        added.append("`shots.masks` (byte and network units, masked before 1.4.0 for every project)")
+    if "keep_width" not in shots:
+        shots["keep_width"] = ["AXMenuBarItem"]
+        added.append("`shots.keep_width` (`AXMenuBarItem`, kept whole before 1.4.0)")
+    return ("its config keeps what shots-kit did before 1.4.0: " + ", ".join(added)) if added else None
+
+
+MIGRATIONS = [migrate_shots_masks]
+
+
+def vendor_project(p: Project, version: str, dry: bool, given_upkeep: int | None = None) -> str:
+    behind = p.behind()
+    if not behind:
+        return f"{p.name}: up to date"
+    changes = ", ".join(f"{t.name} {t.version_of(path) or '?'} → {version}" for t, path in behind)
+    repo = repo_of(p)
+    upkeep = p.config.get("upkeep") or given_upkeep
+    if "plan" in p.config and not upkeep:
+        # Its plan check fails on an issue outside the plan: it goes under an item.
+        raise RuntimeError("it has a plan, so the issue needs an item to go under: give --upkeep <issue> "
+                           "once (its config keeps it as `upkeep`)")
+    if dry:
+        return f"{p.name}: would open an issue and a pull request in {repo} ({changes})" + \
+            (f", the issue under #{upkeep}" if upkeep else "")
+    base = default_branch(p)
+    git("fetch", "-q", "origin", base, cwd=p.root)
+    title = f"Update product-kit's tools to {version}"
+    body = (f"The copies of product-kit's tools this project keeps for its CI are behind: {changes}.\n\n"
+            f"Opened by `product-kit vendor --all` (kevinabouhanna/product-kit). Tooling only: no app release.")
+    url = gh("issue", "create", "-R", repo, "--title", title, "--body", body).strip().splitlines()[-1]
+    issue = int(url.rstrip("/").rsplit("/", 1)[1])
+    if upkeep:
+        ids = json.loads(gh("api", "graphql", "-f", "query=query { repository(owner: \"%s\", name: \"%s\") { "
+                            "a: issue(number: %d) { id } b: issue(number: %d) { id } } }"
+                            % (*repo.split("/", 1), int(upkeep), issue)))["data"]["repository"]
+        gh("api", "graphql", "-f", "query=mutation { addSubIssue(input: { issueId: \"%s\", subIssueId: \"%s\" }) "
+           "{ issue { number } } }" % (ids["a"]["id"], ids["b"]["id"]))
+    branch = f"product-kit-{version.replace('.', '-')}-{issue}"
+    tree = p.root / ".claude" / "worktrees" / branch
+    git("worktree", "add", "-q", "-b", branch, str(tree), f"origin/{base}", cwd=p.root)
+    try:
+        old = {t.name: t.version_of(path) for t, path in p.copies(tree)}
+        config_file = tree / p.config_file.name
+        config = json.loads(config_file.read_text(encoding="utf-8"))
+        notes = [n for m in MIGRATIONS if (n := m(p.root, tree, config, old))]
+        if upkeep and not config.get("upkeep"):
+            config["upkeep"] = int(upkeep)
+            notes.append(f"its config names #{upkeep} as the item its tooling chores go under (`upkeep`)")
+        if notes:
+            config_file.write_text(json.dumps(config, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        for tool, _ in Project(tree, config_file).copies():
+            if tool.name == "shots-kit":
+                cmd = [str(HERE / "shots-kit"), "vendor", "--repo", str(tree)]
+            else:
+                cmd = ["python3", "-I", str(HERE / tool.name), "vendor"]
+            r = subprocess.run(cmd, cwd=tree, capture_output=True, text=True)
+            if r.returncode != 0:
+                raise RuntimeError(f"{tool.name} vendor: {r.stdout.strip()} {r.stderr.strip()}")
+        # A project with a plan keeps it in step with the new issue (a step of its upkeep item).
+        docs_copy = next((path for t, path in Project(tree, config_file).copies() if t.name == "docs-kit"), None)
+        if upkeep and "plan" in config and docs_copy:
+            subprocess.run(["python3", "-I", str(docs_copy), "plan", "sync"], cwd=tree, capture_output=True, text=True,
+                           env={**os.environ, "DOCS_KIT_GH": os.environ.get("PRODUCT_KIT_GH", "gh")})
+        git("add", "-A", cwd=tree)
+        git("commit", "-q", "-m", f"{title} (#{issue})\n\n{changes}." + "".join(f"\n{n}." for n in notes), cwd=tree)
+        git("push", "-q", "-u", "origin", branch, cwd=tree)
+        pr_body = (f"Closes #{issue}\n\n- {changes}\n" + "".join(f"- {n}\n" for n in notes)
+                   + "\nTooling only: no app release. Opened by `product-kit vendor --all`.\n")
+        pr = gh("pr", "create", "-R", repo, "--head", branch, "--base", base, "--title", f"{title} (#{issue})",
+                "--body", pr_body).strip().splitlines()[-1]
+    finally:
+        subprocess.run(["git", "worktree", "remove", "--force", str(tree)], cwd=p.root, capture_output=True)
+        subprocess.run(["git", "branch", "-D", branch], cwd=p.root, capture_output=True)
+    return f"{p.name}: {pr} ({changes})" + "".join(f"; {n}" for n in notes)
+
+
+def vendor_all(args: list[str]) -> int:
+    if "--all" not in args:
+        fail("usage: product-kit vendor --all [--dry-run] [--only NAME,… [--upkeep ISSUE]] "
+             "(each tool's own `vendor` does one project)")
+    version = kit_version()
+    only, upkeep = set(), None
+    if "--only" in args:
+        i = args.index("--only")
+        only = set(args[i + 1].split(",")) if i + 1 < len(args) else set()
+    if "--upkeep" in args:
+        i = args.index("--upkeep")
+        if i + 1 >= len(args) or not args[i + 1].isdigit() or len(only) != 1:
+            fail("--upkeep <issue> goes with --only <one project>")
+        upkeep = int(args[i + 1])
+    status = 0
+    for p in projects():
+        if only and p.name not in only:
+            continue
+        if not p.copies():
+            continue
+        try:
+            say(vendor_project(p, version, "--dry-run" in args, upkeep))
+        except RuntimeError as e:
+            say(f"{p.name}: not done: {e}")
+            status = 1
+    return status
+
+
+def main(argv: list[str]) -> int:
+    command = argv[0] if argv else "help"
+    rest = argv[1:]
+    if command == "docs":
+        os.execvp("python3", ["python3", "-I", str(HERE / "docs-kit"), *rest])
+    if command == "lang":
+        os.execvp("python3", ["python3", "-I", str(HERE / "lang-kit"), *rest])
+    if command == "shots":
+        os.execv(str(HERE / "shots-kit"), [str(HERE / "shots-kit"), *rest])
+    if command in ("version", "--version"):
+        say(kit_version())
+        return 0
+    if command == "projects":
+        return list_projects("--json" in rest)
+    if command == "vendor":
+        return vendor_all(rest)
+    if command == "bump":
+        if len(rest) != 1:
+            fail("usage: product-kit bump <version>")
+        bump(rest[0])
+        return 0
+    usage = __doc__.split("\n\nThe reference")[0].split("\n", 2)[2]
+    if command in ("help", "-h", "--help"):
+        print(usage)
+        return 0
+    print(f"product-kit: no command '{command}'\n{usage}", file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
