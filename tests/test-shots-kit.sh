@@ -249,5 +249,46 @@ expect "a screen the driver skips says why" 'd check --language en | grep -q "ho
 rm "$DRV/skip"
 expect "record needs names" 'd record | grep -q "record: name the"'
 
+echo "--- one list, where the site is on the same branch (#36)"
+ONE="$TMP/onelist"; mkdir -p "$ONE/site/shots" "$ONE/site/assets" "$ONE/docs"
+git -C "$ONE" init -q
+cat >"$ONE/.product-kit.json" <<'EOF'
+{"repo": "me/one", "shots": {"site": "site", "repo_assets": "docs/assets.json"}}
+EOF
+echo '<img src="assets/main.png">' >"$ONE/site/index.html"; : >"$ONE/site/assets/main.png"
+echo '![Logo](docs/logo.png) ![Tour](docs/tour.gif)' >"$ONE/README.md"; : >"$ONE/docs/logo.png"; : >"$ONE/docs/tour.gif"
+cat >"$ONE/site/shots/shots.json" <<'EOF'
+{"app": "/Applications/One.app", "bundle": "me.One",
+ "shots": [{"name": "main", "file": "assets/main.png", "open": [], "window": "One"}]}
+EOF
+cat >"$ONE/docs/assets.json" <<'EOF'
+{"assets": [{"file": "docs/logo.png", "none": "the app's icon"}, {"file": "docs/tour.gif", "shows": ["main"], "made": "1.0", "how": "hand"}]}
+EOF
+o() { (cd "$ONE" && "$KIT" "$@" 2>&1) || true; }
+expect "two lists pass, before" 'o coverage | grep -q "all accounted for"'
+expect "migrate folds the README's list into the manifest" \
+  'o migrate | grep -q "folded 2 of docs/assets.json.s 2 entries into site/shots/shots.json (each .\"in\": \"repo\".)"'
+expect "and takes out the old list and its key" \
+  '[ ! -f "$ONE/docs/assets.json" ] && ! grep -q repo_assets "$ONE/.product-kit.json" && grep -q "\"in\": \"repo\"" "$ONE/site/shots/shots.json"'
+expect "one list passes the same check" 'o coverage | grep -q "all accounted for"'
+expect "migrate again has nothing to fold in" 'o migrate | grep -q "nothing to fold in"'
+python3 - "$ONE/site/shots/shots.json" <<'EOF'
+import json, sys
+m = json.load(open(sys.argv[1]))
+m["assets"].append({"file": "docs/gone.png", "none": "a picture", "in": "repo"})
+m["assets"][1]["how"] = "magic"
+json.dump(m, open(sys.argv[1], "w"), indent=2)
+EOF
+expect "a README file the one list names but nobody has is a problem" 'o coverage | grep -q "docs/gone.png is listed in shots/shots.json (\"in\": \"repo\") but doesn.t exist"'
+expect "how it's made is one of the known ways" 'o coverage | grep -q "docs/tour.gif in shots/shots.json (\"in\": \"repo\") says it.s made \"magic\""'
+# A site in its own checkout (another branch, as gh-pages is): two lists, by design.
+APART="$TMP/apart"; mkdir -p "$APART/app/docs" "$APART/app-site/shots"
+git -C "$APART/app" init -q
+echo '{"repo": "me/apart", "shots": {"site": "../app-site", "repo_assets": "docs/assets.json"}}' >"$APART/app/.product-kit.json"
+echo '{"assets": []}' >"$APART/app/docs/assets.json"
+echo '{"app": "/Applications/A.app", "bundle": "me.A", "shots": []}' >"$APART/app-site/shots/shots.json"
+expect "a site on another branch keeps its own list, and migrate says why" \
+  'out="$(cd "$APART/app" && "$KIT" migrate 2>&1)"; [ $? -ne 0 ] || true; grep -q "on another branch or in another repository, so it keeps its own list" <<<"$out" && [ -f "$APART/app/docs/assets.json" ]'
+
 [ "$fails" -eq 0 ] && echo "shots-kit: every test passed" || echo "shots-kit: $fails failed"
 exit $((fails > 0))
