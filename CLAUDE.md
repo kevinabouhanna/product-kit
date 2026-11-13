@@ -24,9 +24,14 @@ through without asking. What's particular here:
 - **Install on this Mac:** `claude plugin marketplace update kevinabouhanna && claude plugin
   update product-kit@kevinabouhanna`. New sessions pick it up.
 - **Projects keep copies.** A change to a tool a project vendors (`bin/docs-kit`, `bin/lang-kit`,
-  `shots/shots-kit.swift` → `Scripts/…`) bumps its version (`VERSION`, `shotsKitVersion`) and is
-  followed by a pull request in each such project with `<tool> vendor` (NetworkMonitor today).
-  It's tooling only there: no app release.
+  `shots/shots-kit.swift`) bumps the one version every tool carries (`product-kit bump <version>`;
+  the tests fail when they differ). Once merged and installed, `product-kit vendor --all` opens an
+  issue and a pull request in each project that's behind (`product-kit projects` lists them);
+  run each project's own CI on it and merge it by that project's rules. Tooling only there: no
+  app release. When a version moves something out of the code into config, add a migration to
+  `bin/product-kit` (`MIGRATIONS`), so every project behaves the same after it (#33).
+- **Run `plan sync` from your worktree**, never the main checkout: it writes
+  `docs/phases/README.md`, which then blocks `git pull` there.
 - **shots-kit drives a real app** (unless the project draws its own pictures, `render`, which its
   tests cover). Its tests cover what reads files; a change to how it reads,
   takes or masks windows is checked by running `check` against NetworkMonitor's app before and
