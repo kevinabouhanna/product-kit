@@ -19,6 +19,24 @@ sk() { "$KIT" "$@" 2>&1 || true; }   # its output, whatever its status
 echo "--- builds, and its own cases"
 expect "it builds and says its version" '"$KIT" version 2>/dev/null | grep -Eq "^[0-9]+\.[0-9]+\.[0-9]+$"'
 expect "where the asset check looks for media: every case passes" '"$KIT" coverage-test | grep -q "cases passed"'
+expect "the masks, in six languages: every case passes" '"$KIT" mask-test | grep -q "cases passed"'
+
+echo "--- the masks, from a project's config (#32)"
+MASKED="$TMP/masked"; mkdir -p "$MASKED"
+cat >"$MASKED/.product-kit.json" <<'EOF'
+{"repo": "me/masked", "languages": {"fr": {"name": "Français"}},
+ "shots": {"masks": [{"pattern": "[$€]#", "as": "‹money›"}, {"pattern": "#\\s?%", "as": "‹percent›"}]}}
+EOF
+expect "French dates are masked once French is one of the project's languages" \
+  '[ "$(echo "Mis à jour lundi 3 mars à 17:51" | "$KIT" mask --repo "$MASKED")" = "Mis à jour ‹day› # ‹month› à #" ]'
+expect "the project's own masks follow, in order" \
+  '[ "$(echo "Total €12.50 and 80 %" | "$KIT" mask --repo "$MASKED")" = "Total ‹money› and ‹percent›" ]'
+expect "without them, a project's units aren't masked" \
+  '[ "$(echo "12.3 MB/s on Monday" | "$KIT" mask --repo "$TMP")" = "# MB/s on ‹day›" ]'
+echo '{"repo": "me/bad", "shots": {"masks": [{"pattern": "[unclosed", "as": "x"}]}}' >"$TMP/bad.json"
+mkdir -p "$TMP/bad"; mv "$TMP/bad.json" "$TMP/bad/.product-kit.json"
+expect "a mask that isn't a pattern is named, not ignored" \
+  'echo x | sk mask --repo "$TMP/bad" | grep -q "shots.masks: \[unclosed"'
 
 echo "--- the asset check, on a made-up project"
 APP="$TMP/app"; SITE="$TMP/app-site"
