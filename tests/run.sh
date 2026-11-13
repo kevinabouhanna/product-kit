@@ -2,7 +2,7 @@
 # Runs every test in this folder. Usage: tests/run.sh
 cd "$(dirname "$0")" || exit 1
 status=0
-for t in test-product-kit.sh test-docs-kit.sh test-lang-kit.sh test-shots-kit.sh; do
+for t in test-product-kit.sh test-docs-kit.sh test-lang-kit.sh test-shots-kit.sh test-web.sh; do
   echo "=== $t"
   ./"$t" || status=1
 done

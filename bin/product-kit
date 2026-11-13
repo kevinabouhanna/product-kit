@@ -32,7 +32,10 @@
   product-kit store check | shots [--dry-run]
                               the App Store page in every language: its text within Apple's
                               limits; its screenshots, each picture with its caption, drawn
-  product-kit driver <name> …  a driver product-kit brings for shots-kit: ios-simulator
+  product-kit site check [--site DIR]
+                              the website itself: every page in every language opens, its
+                              pictures load, its links go somewhere, nothing spills out sideways
+  product-kit driver <name> …  a driver product-kit brings for shots-kit: ios-simulator, web
   product-kit gap "<what>" --why "<why>"
                               puts something product-kit couldn't do here in its Inbox
   product-kit publish [--dry-run]
@@ -976,6 +979,11 @@ issue, and run `docs-kit plan sync`.
         if kind in ("mac", "mac+iphone"):
             manifest = {"app": f"/Applications/{name}.app", "bundle": f"com.{owner.lower()}.{name.replace(' ', '')}",
                         "shots": [], "assets": []}
+        elif kind == "web-view":
+            manifest = {"driver": {"command": ["product-kit", "driver", "web"],
+                                   "serve": ["npm", "run", "dev", "--", "--port", "{port}", "--strictPort"],
+                                   "ready": "http://localhost:{port}/"},
+                        "shots": [], "assets": []}
         elif kind == "iphone":
             manifest = {"driver": {"command": ["product-kit", "driver", "ios-simulator", "--app", f"build/{name}.app",
                                                "--bundle", f"com.{owner.lower()}.{name.replace(' ', '')}"]},
@@ -1274,6 +1282,30 @@ def store(args: list[str]) -> int:
     return 0
 
 
+def site_check(args: list[str]) -> int:
+    """The website itself: every page in every language opens, its pictures load, its links go
+    somewhere, nothing spills out sideways (#46), with the web driver's headless Chrome."""
+    if not args or args[0] != "check":
+        fail("usage: product-kit site check [--site DIR]")
+    root = checkout_root()
+    config_file = next((root / c for c in CONFIGS if (root / c).exists()), None)
+    config = json.loads(config_file.read_text(encoding="utf-8")) if config_file else {}
+    if "--site" in args:
+        site = pathlib.Path(args[args.index("--site") + 1]).resolve()
+    elif config.get("shots", {}).get("site"):
+        site = (main_checkout(root) / config["shots"]["site"]).resolve()
+    else:
+        fail("which site? `--site DIR`, or `shots.site` in the config")
+    source = config.get("lang", {}).get("source") or config.get("site", {}).get("language") or "en"
+    languages = [source] + [c for c in config.get("languages", {}) if c != source]
+    folders = ",".join(f"{c}={v['site']}" for c, v in config.get("languages", {}).items()
+                       if isinstance(v, dict) and v.get("site"))
+    cmd = ["python3", "-I", str(KIT / "drivers" / "web"), "--check-site", str(site), "--languages", ",".join(languages)]
+    if folders:
+        cmd += ["--sites", folders]
+    return subprocess.run(cmd).returncode
+
+
 def gap(args: list[str]) -> int:
     """A gap found in a project, as an entry in product-kit's Inbox, for the next "scan the inbox"."""
     what = next((a for a in args if not a.startswith("--") and (args.index(a) == 0 or args[args.index(a) - 1] not in ("--why", "--project"))), None)
@@ -1354,6 +1386,8 @@ def main(argv: list[str]) -> int:
         return facts_run(rest)
     if command == "init":
         return init(rest)
+    if command == "site":
+        return site_check(rest)
     if command == "notes":
         return notes(rest)
     if command == "store":

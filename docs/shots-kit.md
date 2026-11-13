@@ -137,6 +137,32 @@ App Store or the site wants. `Role#identifier` names an element by its accessibi
 the same in every language. An app that draws its own pictures in a test (SwiftUI's
 `ImageRenderer`) needs no simulator at all: `render`, as for a Mac app.
 
+## Web pages, and apps built on web views (#46)
+
+`product-kit driver web` reads and pictures a web page in a headless Chrome that never shows a
+window, speaking Chrome's DevTools protocol with Python's standard library alone. For an app
+built on web views (Tauri, Electron), point it at the app's development server with made-up
+data, which the manifest's `serve` starts for the run on a free port and stops at its end:
+
+```json
+{"driver": {"command": ["product-kit", "driver", "web"],
+            "serve": ["pnpm", "--dir", "app", "exec", "vite", "--port", "{port}", "--strictPort"],
+            "ready": "http://localhost:{port}/"},
+ "shots": [{"name": "home", "file": "docs/images/home.png", "url": "/", "viewport": [1300, 820], "wait": 2,
+            "click": ["AXButton:Living Room"], "data": [{"from": "AXList"}]}]}
+```
+
+A shot's `url` (from `ready`'s address; `{code}` the language), `viewport` in CSS pixels (the
+picture is twice that, as on a Retina screen), `click`, `wait` (seconds after loading and after
+each click) and `dark`. The language is the browser's locale and `Accept-Language`. The screen's
+description is Chrome's accessibility tree in the Mac's names (`button` → `AXButton`, `heading`
+→ `AXHeading`, a landmark → `AXGroup (AXLandmarkMain)`), so specs read as for a Mac app.
+
+**The website itself**: `product-kit site check [--site DIR]` opens every page in every language
+(each language's folder, `languages.<code>.site`) at a phone's width and a computer's, and
+names a picture that doesn't load, a link to the site's own pages that goes nowhere, a page
+that spills out sideways, and one with no `<meta name="viewport">`.
+
 ## Videos made by script (#44)
 
 A video, GIF or poster in the manifest's `assets` says `how` it's made. Two ways are scripts,
@@ -305,7 +331,7 @@ On the site, or in the project's checkout when it has none. NetworkMonitor's (on
 |---|---|
 | `app`, `bundle` | The installed app and its bundle id. Not with `render`. |
 | `render` | Pictures the project draws itself: `build` and `command`, `{out}` for the folder. Its shots have only `name`, `file` and `render`. |
-| `driver` | A program that opens each screen: `command`, and `build` (#35); product-kit's own: `product-kit driver ios-simulator` (#43). `app` and `bundle` are then optional, and a shot needs only `name` (above). |
+| `driver` | A program that opens each screen: `command`, `build`, and `serve` and `ready` for a server it needs for the run (#35, #46); product-kit's own: `product-kit driver ios-simulator` (#43), `product-kit driver web` (#46). `app` and `bundle` are then optional, and a shot needs only `name` (above). |
 | `shots` | One per picture or checked window: `name`, `file` (the picture, from the site's root; none for a window only checked), `open` (launch arguments), `window` (its title, or an element such as `AXPopover`), `click`, `scroll`, `waitFor`, `when` (taken only when that shot's window changed: a costly one), `skipIf`, `ignore`, `data` (regions that are data: `from`, `until`, `skip`, `optional`), `crop`, `areas` (clickable areas on the page: `match`, `element`, `parent`, `pad`, `h`), `always`. |
 | `assets` | Every other image, GIF and video the site uses: `file`, and `shows` (shots) with `made` (the app version), or `none` (why it shows no window), and `stale` (the issue its remake waits on). `in`: `repo` for the README's and the docs' files, when the site is on the same branch. `how` it's made: `taken`, `drawn`, `recorded`, `built` or `hand` (the default for one that `shows` windows). |
 | `languages` | Other languages the site has a page in: `code`, `page`, `assets` (its pictures' folder), `specs` (labels the app's table can't translate). Each shot is taken again in each. |
@@ -337,5 +363,4 @@ checked against NetworkMonitor's pictures when the tool changes.
 
 ## Not yet
 
-The driver product-kit brings for a web view or page (#46); until then a project brings its
-own (`driver`).
+Windows and Android drivers: phase 3 (#48).

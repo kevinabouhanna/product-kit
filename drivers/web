@@ -1,0 +1,393 @@
+#!/usr/bin/env python3
+"""shots-kit's driver for a web page or an app built on web views (Tauri), in a headless Chrome
+that never shows a window (product-kit#46). Python's standard library only: it speaks Chrome's
+DevTools protocol itself.
+
+  product-kit driver web [--base URL] [--width 1280] [--height 800]
+
+shots-kit runs it once per picture and language (the manifest's `driver`, product-kit#35). A
+shot's own keys, besides shots-kit's (`name`, `file`, `data`, `ignore`):
+  url         the page, from --base (or $PRODUCT_KIT_BASE, which the manifest's `serve` sets):
+              "/#/lights"; `{code}` is the language's code
+  viewport    [width, height] in CSS pixels; pictures are taken at twice that, as on a Retina screen
+  click       elements to click, in order, once it's loaded: "AXButton:Lights", "AXLink#home"
+  wait        seconds to wait after loading and after each click (1 by default)
+  dark        true: prefers-color-scheme dark
+The page's language is the request's: the browser's locale and Accept-Language say it.
+It answers with the page's accessibility tree, as Chrome builds it, in the Mac's names (a
+`button` is an `AXButton`); for a `take`, it writes the picture. `record` isn't done here.
+
+  product-kit driver web --check-site <folder> [--languages en,zh-Hans] [--sites zh-Hans=zh]
+checks a website's pages instead: each opens, its pictures load, its own links go somewhere,
+and nothing spills out sideways at a phone's width or a computer's (product-kit site check).
+"""
+
+import base64
+import json
+import os
+import pathlib
+import random
+import re
+import shutil
+import socket
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.parse
+
+
+def fail(text: str, status: int = 1):
+    print(f"web: {text}", file=sys.stderr)
+    sys.exit(status)
+
+
+def find_chrome() -> str:
+    if os.environ.get("PRODUCT_KIT_CHROME"):
+        return os.environ["PRODUCT_KIT_CHROME"]
+    found = sorted(pathlib.Path("~/Library/Caches/ms-playwright").expanduser()
+                   .glob("chromium_headless_shell-*/chrome-headless-shell-*/chrome-headless-shell"))
+    if found:
+        return str(found[-1])
+    fail("needs a headless Chrome: `npx playwright install chromium-headless-shell`")
+
+
+# --------------------------------------------------------------------------
+# Chrome's DevTools protocol, over a WebSocket, with the standard library
+
+
+class DevTools:
+    def __init__(self, language: str, width: int, height: int, dark: bool = False):
+        self.profile = tempfile.mkdtemp(prefix="product-kit-web-")
+        self.chrome = subprocess.Popen(
+            [find_chrome(), "--headless", "--disable-gpu", "--hide-scrollbars", "--no-first-run",
+             "--remote-debugging-port=0", f"--user-data-dir={self.profile}", f"--lang={language}",
+             f"--window-size={width},{height}", "about:blank"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+        url = None
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            line = self.chrome.stderr.readline()
+            m = re.search(r"DevTools listening on (ws://\S+)", line)
+            if m:
+                url = m.group(1)
+                break
+        if not url:
+            self.close()
+            fail("Chrome didn't start")
+        host, port = re.match(r"ws://([^:/]+):(\d+)", url).groups()
+        # The page's own socket, not the browser's.
+        targets = json.loads(self._http(host, int(port), "/json/list"))
+        page = next(t for t in targets if t.get("type") == "page")
+        self.sock = socket.create_connection((host, int(port)), timeout=60)
+        path = urllib.parse.urlparse(page["webSocketDebuggerUrl"]).path
+        key = base64.b64encode(os.urandom(16)).decode()
+        self.sock.sendall((f"GET {path} HTTP/1.1\r\nHost: {host}:{port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+                           f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n").encode())
+        response = b""
+        while b"\r\n\r\n" not in response:
+            response += self.sock.recv(4096)
+        self.buffer = response.split(b"\r\n\r\n", 1)[1]
+        self.next_id = 0
+        self.events: list[dict] = []
+        for domain in ("Page", "DOM", "Accessibility", "Runtime", "Network"):
+            self.call(f"{domain}.enable")
+        self.call("Emulation.setDeviceMetricsOverride", width=width, height=height, deviceScaleFactor=2, mobile=width < 700)
+        self.call("Emulation.setLocaleOverride", locale=language)
+        self.call("Network.setExtraHTTPHeaders", headers={"Accept-Language": language})
+        if dark:
+            self.call("Emulation.setEmulatedMedia", features=[{"name": "prefers-color-scheme", "value": "dark"}])
+
+    @staticmethod
+    def _http(host: str, port: int, path: str) -> str:
+        with socket.create_connection((host, port), timeout=10) as s:
+            s.sendall(f"GET {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n".encode())
+            data = b""
+            while b"\r\n\r\n" not in data:
+                data += s.recv(65536)
+            head, body = data.split(b"\r\n\r\n", 1)
+            # Chrome keeps the connection open: read what Content-Length says, no more.
+            m = re.search(rb"(?i)content-length:\s*(\d+)", head)
+            length = int(m.group(1)) if m else None
+            while length is not None and len(body) < length:
+                body += s.recv(65536)
+        return body.decode()
+
+    def _send(self, text: str) -> None:
+        payload = text.encode()
+        mask = os.urandom(4)
+        header = bytearray([0x81])
+        n = len(payload)
+        if n < 126:
+            header.append(0x80 | n)
+        elif n < 65536:
+            header += bytes([0x80 | 126]) + n.to_bytes(2, "big")
+        else:
+            header += bytes([0x80 | 127]) + n.to_bytes(8, "big")
+        self.sock.sendall(bytes(header) + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(payload)))
+
+    def _read(self, n: int) -> bytes:
+        while len(self.buffer) < n:
+            chunk = self.sock.recv(1 << 20)
+            if not chunk:
+                fail("Chrome closed the connection")
+            self.buffer += chunk
+        out, self.buffer = self.buffer[:n], self.buffer[n:]
+        return out
+
+    def _receive(self) -> dict:
+        message = b""
+        while True:
+            first, second = self._read(2)
+            n = second & 0x7F
+            if n == 126:
+                n = int.from_bytes(self._read(2), "big")
+            elif n == 127:
+                n = int.from_bytes(self._read(8), "big")
+            message += self._read(n)
+            if first & 0x80:
+                return json.loads(message)
+
+    def call(self, method: str, **params) -> dict:
+        self.next_id += 1
+        mine = self.next_id
+        self._send(json.dumps({"id": mine, "method": method, "params": params}))
+        while True:
+            reply = self._receive()
+            if reply.get("id") == mine:
+                if "error" in reply:
+                    raise RuntimeError(f"{method}: {reply['error'].get('message')}")
+                return reply.get("result", {})
+            self.events.append(reply)
+
+    def wait_for(self, event: str, seconds: float = 30) -> None:
+        deadline = time.monotonic() + seconds
+        try:
+            while time.monotonic() < deadline:
+                if any(e.get("method") == event for e in self.events):
+                    self.events = [e for e in self.events if e.get("method") != event]
+                    return
+                self.sock.settimeout(max(0.1, deadline - time.monotonic()))
+                try:
+                    self.events.append(self._receive())
+                except socket.timeout:
+                    break
+        finally:
+            self.sock.settimeout(60)
+
+    def evaluate(self, js: str):
+        return self.call("Runtime.evaluate", expression=js, returnByValue=True, awaitPromise=True)["result"].get("value")
+
+    def open(self, url: str, settle: float = 1.0) -> None:
+        self.call("Page.navigate", url=url)
+        self.wait_for("Page.loadEventFired")
+        time.sleep(settle)
+
+    def close(self) -> None:
+        try:
+            self.chrome.terminate()
+            self.chrome.wait(timeout=10)
+        except Exception:
+            self.chrome.kill()
+        shutil.rmtree(self.profile, ignore_errors=True)
+
+
+# --------------------------------------------------------------------------
+# The page's elements, in the Mac's accessibility names
+
+ROLES = {"button": "AXButton", "link": "AXLink", "heading": "AXHeading", "StaticText": "AXStaticText",
+         "textbox": "AXTextField", "searchbox": "AXTextField", "checkbox": "AXCheckBox", "switch": "AXCheckBox",
+         "radio": "AXRadioButton", "combobox": "AXPopUpButton", "slider": "AXSlider", "image": "AXImage", "img": "AXImage",
+         "list": "AXList", "listitem": "AXGroup", "table": "AXTable", "row": "AXRow", "cell": "AXCell",
+         "tab": "AXRadioButton", "tablist": "AXTabGroup", "menu": "AXMenu", "menuitem": "AXMenuItem",
+         "RootWebArea": "AXWebArea", "dialog": "AXSheet", "progressbar": "AXProgressIndicator"}
+SUBROLES = {"switch": "AXSwitch", "tab": "AXTabButton", "main": "AXLandmarkMain", "navigation": "AXLandmarkNavigation",
+            "banner": "AXLandmarkBanner", "contentinfo": "AXLandmarkContentInfo", "region": "AXLandmarkRegion"}
+SKIP = {"InlineTextBox", "LineBreak", "none"}
+
+
+def ax_value(field):
+    return (field or {}).get("value") if isinstance(field, dict) else None
+
+
+def page_tree(dev: DevTools) -> dict:
+    nodes = dev.call("Accessibility.getFullAXTree")["nodes"]
+    by_id = {n["nodeId"]: n for n in nodes}
+    child_of = {c for n in nodes for c in n.get("childIds", [])}
+
+    def build(node_id: str) -> list[dict]:
+        n = by_id.get(node_id)
+        if not n:
+            return []
+        kids = [k for c in n.get("childIds", []) for k in build(c)]
+        role = ax_value(n.get("role")) or "generic"
+        if n.get("ignored") or role in SKIP or (role in ("generic", "paragraph", "group", "section", "div")
+                                                   and not ax_value(n.get("name"))):
+            return kids
+        out = {"role": ROLES.get(role, "AXGroup" if role in ("generic", "group", "section", "paragraph", "main",
+                                                             "navigation", "banner", "contentinfo", "region", "form",
+                                                             "article", "complementary", "figure") else
+                                 "AX" + role[:1].upper() + role[1:])}
+        if role in SUBROLES:
+            out["subrole"] = SUBROLES[role]
+        name = ax_value(n.get("name"))
+        if name and role != "StaticText":
+            out["description"] = name
+        elif name:
+            out["value"] = name
+        value = ax_value(n.get("value"))
+        if value not in (None, "") and role != "StaticText":
+            out["value"] = value
+        for p in n.get("properties", []):
+            if p.get("name") == "checked":
+                out["value"] = "1" if ax_value(p.get("value")) in (True, "true") else "0"
+        if n.get("backendDOMNodeId"):
+            out["_node"] = n["backendDOMNodeId"]
+        out["children"] = kids
+        return [out]
+
+    roots = [n["nodeId"] for n in nodes if n["nodeId"] not in child_of]
+    built = [k for r in roots for k in build(r)]
+    return built[0] if len(built) == 1 else {"role": "AXWebArea", "children": built}
+
+
+def matches(node: dict, spec: str) -> bool:
+    head, _, label = spec.partition(":")
+    role, _, ident = head.partition("#")
+    if node.get("role") != role or (ident and node.get("identifier") != ident):
+        return False
+    if not label:
+        return True
+    labels = [str(node[k]) for k in ("title", "description", "value") if node.get(k) not in (None, "")]
+    return any(label[1:] in t for t in labels) if label.startswith("~") else any(t.startswith(label) for t in labels)
+
+
+def find(node: dict, spec: str) -> dict | None:
+    if matches(node, spec):
+        return node
+    return next((x for c in node.get("children", []) if (x := find(c, spec))), None)
+
+
+def strip(node: dict) -> dict:
+    return {k: (v if k != "children" else [strip(c) for c in v]) for k, v in node.items() if k != "_node"}
+
+
+# --------------------------------------------------------------------------
+# A shot, and a site check
+
+
+def shot_main(args: list[str]) -> int:
+    def option(name, default=None):
+        return args[args.index(name) + 1] if name in args and args.index(name) + 1 < len(args) else default
+
+    request = json.load(sys.stdin)
+    shot = request.get("shot") or {}
+    code = request.get("language") or "en"
+    base = option("--base") or os.environ.get("PRODUCT_KIT_BASE") or ""
+    width, height = shot.get("viewport") or [int(option("--width", 1280)), int(option("--height", 800))]
+    if request.get("action") == "record":
+        fail("the web driver doesn't record videos; build them from the pictures (`how: built`)")
+    url = (shot.get("url") or "").replace("{code}", code)
+    if not url.startswith(("http:", "https:", "file:")):
+        if not base:
+            fail("a shot's `url` needs --base, or the manifest's `serve`")
+        url = base.rstrip("/") + "/" + url.lstrip("/")
+    dev = DevTools(code, int(width), int(height), bool(shot.get("dark")))
+    try:
+        wait = float(shot.get("wait", 1))
+        dev.open(url, wait)
+        tree = page_tree(dev)
+        for spec in shot.get("click") or []:
+            target = find(tree, spec)
+            if not target or not target.get("_node"):
+                fail(f"nothing matches {spec} to click")
+            obj = dev.call("DOM.resolveNode", backendNodeId=target["_node"])["object"]["objectId"]
+            dev.call("Runtime.callFunctionOn", objectId=obj, functionDeclaration="function() { this.click(); }")
+            time.sleep(wait)
+            tree = page_tree(dev)
+        if request.get("action") == "take":
+            shot_png = dev.call("Page.captureScreenshot", format="png", captureBeyondViewport=False)["data"]
+            picture = pathlib.Path(request["picture"])
+            picture.parent.mkdir(parents=True, exist_ok=True)
+            picture.write_bytes(base64.b64decode(shot_png))
+        print(json.dumps({"window": strip(tree)}))
+        return 0
+    finally:
+        dev.close()
+
+
+SITE_CHECK = r"""
+(async () => {
+  const problems = [];
+  // A picture loaded only when scrolled to is loaded now, so it's checked like the others.
+  for (const img of document.querySelectorAll('img[loading="lazy"]')) img.loading = "eager";
+  for (const img of [...document.images]) {
+    if (!img.complete) await new Promise(r => { img.onload = img.onerror = r; setTimeout(r, 3000); });
+    if (!img.naturalWidth) problems.push("a picture doesn't load: " + (img.getAttribute("src") || "?"));
+  }
+  if (innerWidth < 700 && !document.querySelector('meta[name="viewport"]'))
+    problems.push('it has no <meta name="viewport">: a phone shows it shrunk');
+  const width = document.documentElement.clientWidth;
+  if (document.documentElement.scrollWidth > width + 1)
+    problems.push(`it spills out sideways: ${document.documentElement.scrollWidth}px of ${width}`);
+  const links = [...document.querySelectorAll("a[href]")].map(a => a.href)
+    .filter(h => h.startsWith(location.origin) && !h.includes("#"));
+  return {problems, links: [...new Set(links)]};
+})()
+"""
+
+
+def site_main(args: list[str]) -> int:
+    folder = pathlib.Path(args[args.index("--check-site") + 1]).resolve()
+    languages = (args[args.index("--languages") + 1] if "--languages" in args else "en").split(",")
+    sites = dict(p.split("=", 1) for p in (args[args.index("--sites") + 1].split(",") if "--sites" in args else []) if "=" in p)
+    pages = sorted(p.relative_to(folder).as_posix() for p in folder.rglob("*.html")
+                   if not any(part.startswith((".", "_")) for part in p.relative_to(folder).parts))
+    server = subprocess.Popen([sys.executable, "-I", "-u", "-m", "http.server", "0", "--bind", "127.0.0.1", "--directory", str(folder)],
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    try:
+        port = None
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline and not port:
+            m = re.search(r"port (\d+)", server.stdout.readline())
+            port = m.group(1) if m else None
+        if not port:
+            fail("couldn't serve the site")
+        found = []
+        checked = 0
+        for code in languages:
+            folder_name = sites.get(code, "")
+            mine = [p for p in pages if (p.startswith(folder_name + "/") if folder_name else
+                                         not any(p.startswith(f + "/") for f in sites.values()))]
+            for width, height in ((390, 844), (1280, 800)):
+                dev = DevTools(code, width, height)
+                try:
+                    for page in mine:
+                        dev.open(f"http://127.0.0.1:{port}/{page}", 0.3)
+                        result = dev.evaluate(SITE_CHECK) or {}
+                        checked += 1
+                        for p in result.get("problems", []):
+                            found.append(f"{page} ({code}, {width}px wide): {p}")
+                        for link in result.get("links", []):
+                            path = urllib.parse.urlparse(link).path.lstrip("/")
+                            target = folder / urllib.parse.unquote(path)
+                            if not (target.exists() or (target / "index.html").exists() or target.with_suffix(".html").exists()):
+                                found.append(f"{page} ({code}): a link goes nowhere: /{path}")
+                finally:
+                    dev.close()
+        found = sorted(set(found))
+        if found:
+            print(f"site check: {len(found)} to put right:")
+            for f in found:
+                print(f"  {f}")
+            return 1
+        print(f"site check: {len(pages)} pages, {checked} looks at them (a phone's width and a computer's, "
+              f"{', '.join(languages)}): every picture loads, every link goes somewhere, nothing spills out")
+        return 0
+    finally:
+        server.terminate()
+
+
+if __name__ == "__main__":
+    a = sys.argv[1:]
+    sys.exit(site_main(a) if "--check-site" in a else shot_main(a))

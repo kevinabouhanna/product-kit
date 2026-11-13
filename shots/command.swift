@@ -30,7 +30,80 @@ struct DriverConfig: Decodable {
     var command: [String]
     /// Builds what it drives, once per run, before the first shot. Optional.
     var build: [String]?
+    /// Serves what it drives for the whole run, such as a web app's development server
+    /// (product-kit#46): `{port}` is a free port. Stopped when the run ends.
+    var serve: [String]?
+    /// The address that answers once it's served, `{port}` its port: the driver gets it as
+    /// `PRODUCT_KIT_BASE`, for the shots' `url`s.
+    var ready: String?
 }
+
+/// A driver's server, for the whole run (product-kit#46).
+final class Served {
+    let process: Process
+    let base: String
+
+    init(_ serve: [String], ready: String?, in dir: URL) throws {
+        let port = Served.freePort()
+        process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = serve.map { $0.replacingOccurrences(of: "{port}", with: "\(port)") }
+        process.currentDirectoryURL = dir
+        process.environment = ProcessInfo.processInfo.environment.merging(["PORT": "\(port)"]) { $1 }
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+        base = (ready ?? "http://localhost:{port}/").replacingOccurrences(of: "{port}", with: "\(port)")
+        // Ready once it answers, within 90 seconds.
+        let deadline = Date().addingTimeInterval(90)
+        while Date() < deadline {
+            if !process.isRunning { throw Failure("`serve` stopped before it answered: \(serve.joined(separator: " "))") }
+            if Served.answers(base) { return }
+            usleep(500_000)
+        }
+        stop()
+        throw Failure("`serve` didn't answer at \(base) within 90 seconds")
+    }
+
+    func stop() {
+        guard process.isRunning else { return }
+        process.terminate()
+        let deadline = Date().addingTimeInterval(10)
+        while process.isRunning && Date() < deadline { usleep(200_000) }
+        if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+    }
+
+    static func answers(_ address: String) -> Bool {
+        guard let url = URL(string: address) else { return false }
+        let done = DispatchSemaphore(value: 0)
+        nonisolated(unsafe) var ok = false
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 2
+        URLSession.shared.dataTask(with: request) { _, response, _ in
+            ok = (response as? HTTPURLResponse) != nil
+            done.signal()
+        }.resume()
+        _ = done.wait(timeout: .now() + 3)
+        return ok
+    }
+
+    /// A port nothing listens on now.
+    static func freePort() -> Int {
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        defer { close(fd) }
+        var address = sockaddr_in()
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_port = 0
+        address.sin_addr.s_addr = inet_addr("127.0.0.1")
+        var size = socklen_t(MemoryLayout<sockaddr_in>.size)
+        _ = withUnsafePointer(to: &address) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(fd, $0, size) } }
+        _ = withUnsafeMutablePointer(to: &address) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { getsockname(fd, $0, &size) } }
+        return Int(UInt16(bigEndian: address.sin_port))
+    }
+}
+
+/// What a driver's calls carry in their environment: the served address, when there is one.
+nonisolated(unsafe) var driverEnvironment: [String: String] = [:]
 
 enum Commanded {
     /// How long a build, and each request, may take before it's stopped.
@@ -41,8 +114,12 @@ enum Commanded {
         var skipped: String?
     }
 
+    /// The server `serve` started, stopped when the run ends.
+    nonisolated(unsafe) static var servedNow: Served?
+
     static func run(_ command: String, names: Set<String>, manifest: Manifest, driver: DriverConfig, site: URL, repo: URL,
                     repoAssets: RepoAssets?, only: String?) -> Int32 {
+        defer { servedNow?.stop() }
         guard ["check", "update", "tree", "record"].contains(command) else {
             print("\(command): not for a manifest with a `driver`; check, update, tree and record are")
             return 2
@@ -65,6 +142,12 @@ enum Commanded {
             if let build = driver.build, !build.isEmpty {
                 print("building: \(build.joined(separator: " "))")
                 try Rendered.runCommand(build, in: repo, limit: buildLimit, what: "the build")
+            }
+            if let serve = driver.serve, !serve.isEmpty {
+                print("serving: \(serve.joined(separator: " "))")
+                let served = try Served(serve, ready: driver.ready, in: repo)
+                servedNow = served
+                driverEnvironment["PRODUCT_KIT_BASE"] = served.base
             }
         } catch {
             print("\(command): \(error)")
@@ -219,6 +302,7 @@ enum Commanded {
         p.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         p.arguments = argv
         p.currentDirectoryURL = dir
+        p.environment = ProcessInfo.processInfo.environment.merging(driverEnvironment) { $1 }
         let stdin = Pipe(), stdout = Pipe(), stderr = Pipe()
         p.standardInput = stdin
         p.standardOutput = stdout
