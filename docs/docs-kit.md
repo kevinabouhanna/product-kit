@@ -2,8 +2,18 @@
 
 One source for a project's docs (#36). `docs/` in the repository is the source; the
 website's docs pages and the GitHub wiki are built from it and never edited; a check holds the
-docs to the features they describe. It also keeps a project's [plan](#the-plan) (#18) in step
-across its milestones, issues, project board and phase pages.
+docs to the features they describe.
+
+A project's docs grow in this order, and docs-kit has a part for each:
+
+| Stage | What | Where it's described |
+|---|---|---|
+| 1. **The plan** | `docs/PLAN.md` and a page per phase, written with the project's owner, kept the same as the issues, milestones and project board on GitHub: one root issue, a phase issue per phase, items and steps under them (`docs-kit plan`) | [plan.md](plan.md) |
+| 2. **Docs for users** | Pages in `docs/` that say what the app does, changed in the same pull request as the feature (`docs-kit check`) | [below](#commands) |
+| 3. **The wiki and the website** | Built from `docs/`, never edited (`docs-kit wiki`, `docs-kit site`) | [below](#the-websites-pages) |
+| 4. **Pictures** | The app's pictures and videos, kept current | [shots-kit](shots-kit.md) |
+
+Translations (lang-kit) run through stages 2 to 4.
 
 It's the docs part of [product-kit](../README.md), a plugin in the `kevinabouhanna`
 marketplace (it was a plugin of its own in claude-parallel-sessions until product-kit#2):
@@ -33,9 +43,7 @@ poor one; the website is a build output. (NetworkMonitor#334 has the whole decis
 | `docs-kit site <site checkout> [commit]` | The website's docs pages, in the site's own template, rendered by GitHub. |
 | `docs-kit wiki <wiki checkout> [commit]` | The wiki: every page, Home, the sidebar and the footer; removes pages whose doc is gone. |
 | `docs-kit anchors` | Every page the site publishes, with its address and anchors, as JSON. |
-| `docs-kit plan check` | Fails when the plan's pages and GitHub (milestones, issues, the board) don't agree. [The plan](#the-plan). |
-| `docs-kit plan index [--check]` | Writes the plan's index from GitHub, or says whether it's up to date. |
-| `docs-kit plan status [--write]` | Each phase page's Milestone and Status line as GitHub has it; `--write` puts it on the pages. |
+| `docs-kit plan init\|sync\|check\|index\|status` | The plan: [plan.md](plan.md). |
 | `docs-kit vendor [--check]` | Copies this file to the project's `Scripts/docs-kit`, or says whether that copy is this one. |
 | `docs-kit init` | Writes a starting `.product-kit.json`. |
 | `docs-kit -C <dir> …` | Runs as if started in `<dir>`, as `git -C` does. |
@@ -68,7 +76,7 @@ At the top of the repository. NetworkMonitor's is a full example.
 | `wiki.names` | Wiki page names for files, where the file name won't do. |
 | `wiki.home` | Text above the index on the wiki's Home; `{web}` is the repository's address. |
 | `vendor` | Where the project's copy lives (`Scripts/docs-kit`). |
-| `plan` | The plan: `pages`, `index`, `project`, `fields`, `no_page`. [The plan](#the-plan). |
+| `plan` | The plan: [plan.md](plan.md#the-config). |
 
 `repo` is all the rest needs: a project using only the plan has `repo` and `plan`.
 
@@ -99,106 +107,8 @@ The template is the site's own: a page of HTML with these placeholders.
 `DOCS_KIT_RENDER` names a command to render with instead of GitHub (Markdown in, HTML out),
 for tests and for working offline.
 
-## The plan
-
-A project's plan lives in four places, kept the same by `docs-kit plan`:
-
-| Where | Holds |
-|---|---|
-| **Milestones** | One per phase. |
-| **Issues** | Each plan in a phase is an issue in its milestone; its steps are sub-issues. |
-| **The project board** (Projects) | The roadmap's order: an **Order** number and a **Horizon** (the field's choices, in their order on the board: Now, Next, Later), and, if the project uses them, **Start** and **Target** dates. |
-| **Pages** | One per phase in `plan.pages` (`docs/phases`), and the index, written from GitHub. |
-
-A **plan** is an open issue in a milestone whose parent isn't an open issue (a step whose parent
-is closed becomes a plan). A phase's **Status** is **Done** when its milestone is closed or has
-no open issues, and otherwise the earliest Horizon among its open issues.
-
-Each page says which milestone it is, on a line right under its `# ` title:
-
-```
-# Phase 1: Lights
-
-**Milestone:** Phase 1: Lights · **Status:** Now
-```
-
-The rest of the page is the project's own: the goal, the decisions, what's left. It must
-mention (`#N`, anywhere) every open plan in its milestone; sub-issues and other phases' issues
-can be mentioned or not.
-
-### Changing the plan
-
-A change to the plan changes all four places **in the same session**: open, close or move the
-issues, set their Order and Horizon on the board, open or close the milestone, edit the phase's
-page, then `docs-kit plan status --write` and `docs-kit plan index`. `docs-kit plan check`
-holds them together; run it in CI.
-
-### `plan check`
-
-Reads GitHub with `gh` (one query, 100 issues at a time; `gh` signed in), and fails, saying
-what to do, when:
-
-- an open milestone has no page (and isn't in `plan.no_page`);
-- a page has no Milestone line, names a milestone GitHub doesn't have, or shares one with
-  another page;
-- a page's Status isn't what GitHub says (it says why: `#486 is Now`, `its milestone is closed`);
-- a page doesn't mention an open plan in its milestone;
-- an open milestone has no open issues (close it; its page's Status is then Done);
-- an open issue in a milestone isn't on the board, or has no Horizon;
-- a field the config names isn't on the board, or isn't the right kind (Order a number, Horizon
-  a single select, Start and Target dates);
-- the index isn't what `plan index` would write.
-
-When all is well it prints one line. It retries when the network fails (`DOCS_KIT_RETRY_WAIT`,
-3 s, then 6, then 9).
-
-### The index
-
-`docs-kit plan index` writes `plan.index` (`docs/phases/README.md`, which GitHub shows under the
-folder's files, so the folder reads in the roadmap's order rather than `10-…` before `2-…`):
-a section per Horizon, each a table of its plans by Order (then the milestone's due date, then
-the issue's number), and a Done line linking the finished phases' pages. Everything above its
-first `## ` heading is the project's own (a title and what the phases are) and is kept; a
-comment above it says the rest is written. It has no date, so it changes only when GitHub does.
-
-```
-## Now
-
-| Order | Plan | Phase |
-|---|---|---|
-| 1 | #486 A new Xiaomi device shows up by itself, ready to name and use | [Phase 1: Lights](1-lights.md) |
-
-## Done
-
-[Phase 0: Foundations](0-foundations.md) ·
-[Phase 2: Claude in the app](2-claude.md)
-```
-
-### The config
-
-```json
-"plan": {
-  "pages": "docs/phases",
-  "index": "docs/phases/README.md",
-  "project": { "owner": "kevinabouhanna", "number": 8 },
-  "fields": { "order": "Order", "horizon": "Horizon", "start": "Start", "target": "Target" },
-  "no_page": ["Ideas"]
-}
-```
-
-| Key | Meaning |
-|---|---|
-| `pages` | The folder of phase pages (`docs/phases`). Every `.md` in it but the index is a phase page. |
-| `index` | The index `plan index` writes (`<pages>/README.md`). |
-| `project` | The project board: its `owner` (a user or an organization; the repository's owner if left out) and `number`. |
-| `fields` | The board's field names, where they aren't `Order` and `Horizon`. `start` and `target` are checked only when named. |
-| `no_page` | Open milestones that deliberately have no page (a list of ideas); their plans are in the index by name. |
-
-`DOCS_KIT_GH` names a command to run instead of `gh`, given the same arguments, for tests
-(`tests/test-docs-kit.sh` gives it recorded answers).
-
 ## Tests
 
 `tests/test-docs-kit.sh`, run by `tests/run.sh` with the rest. It builds a
 small project in a temporary folder and checks each command, offline; the plan's commands
-read recorded GitHub answers.
+run against `tests/fake-github.py`, a stand-in GitHub that keeps its state in a file.
