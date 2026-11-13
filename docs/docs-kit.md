@@ -8,7 +8,7 @@ A project's docs grow in this order, and docs-kit has a part for each:
 
 | Stage | What | Where it's described |
 |---|---|---|
-| 1. **The plan** | `docs/PLAN.md` and a page per phase, written with the project's owner, kept the same as the issues, milestones and project board on GitHub: one root issue, a phase issue per phase, items and steps under them (`docs-kit plan`) | [plan.md](plan.md) |
+| 1. **The plan** | `docs/PLAN.md` and a page per phase, written with the project's owner, kept the same as the issues, milestones and project board on GitHub: one root issue, a phase issue per phase, items and steps under them (`docs-kit plan`) | [docs-kit-plan.md](docs-kit-plan.md) |
 | 2. **Docs for users** | Pages in `docs/` that say what the app does, changed in the same pull request as the feature (`docs-kit check`) | [below](#commands) |
 | 3. **The wiki and the website** | Built from `docs/`, never edited (`docs-kit wiki`, `docs-kit site`) | [below](#the-websites-pages) |
 | 4. **Pictures** | The app's pictures and videos, kept current | [shots-kit](shots-kit.md) |
@@ -43,7 +43,7 @@ poor one; the website is a build output. (NetworkMonitor#334 has the whole decis
 | `docs-kit site <site checkout> [commit]` | The website's docs pages, in the site's own template, rendered by GitHub. |
 | `docs-kit wiki <wiki checkout> [commit]` | The wiki: every page, Home, the sidebar and the footer; removes pages whose doc is gone. |
 | `docs-kit anchors` | Every page the site publishes, with its address and anchors, as JSON. |
-| `docs-kit plan init\|sync\|check\|index\|status` | The plan: [plan.md](plan.md). |
+| `docs-kit plan init\|sync\|check\|index\|status` | The plan: [docs-kit-plan.md](docs-kit-plan.md). |
 | `docs-kit vendor [--check]` | Copies this file to the project's `Scripts/docs-kit`, or says whether that copy is this one. |
 | `docs-kit init` | Writes a starting `.product-kit.json`. |
 | `docs-kit -C <dir> …` | Runs as if started in `<dir>`, as `git -C` does. |
@@ -76,7 +76,7 @@ At the top of the repository. NetworkMonitor's is a full example.
 | `wiki.names` | Wiki page names for files, where the file name won't do. |
 | `wiki.home` | Text above the index on the wiki's Home; `{web}` is the repository's address. |
 | `vendor` | Where the project's copy lives (`Scripts/docs-kit`). |
-| `plan` | The plan: [plan.md](plan.md#the-config). |
+| `plan` | The plan: [docs-kit-plan.md](docs-kit-plan.md#the-config). |
 
 `repo` is all the rest needs: a project using only the plan has `repo` and `plan`.
 

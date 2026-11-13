@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # product-kit: everything a product shows people, kept current and in every language
-# (kevinabouhanna/product-kit#1). One command with a part for each job:
+# (kevinabouhanna/product-kit, docs/PLAN.md). One command with a part for each job:
 #
 #   product-kit docs …     the docs: docs/ is the source of the site's docs pages and the
 #                          wiki (docs-kit; `docs-kit …` on PATH is the same)

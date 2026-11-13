@@ -1,8 +1,17 @@
 # product-kit
 
-The plugin for what a product shows people: docs, pictures, videos, languages (#1 is the plan).
+The plugin for what a product shows people: docs, pictures, videos, languages.
 `~/.claude/CLAUDE.md` has the workflow (issue → pull request → merge → install), carried
 through without asking. What's particular here:
+
+- **The plan** is `docs/PLAN.md` and `docs/phases/`, kept the same as the issues, milestones and
+  the [project board](https://github.com/users/kevinabouhanna/projects/11) by this repo's own
+  docs-kit (`.product-kit.json`'s `plan`; the root issue is #49). A session that changes the
+  plan (a new issue, a new order, a phase finished) runs `python3 -I bin/docs-kit plan sync`,
+  then `python3 -I bin/docs-kit plan check` (the `plan` check in local CI), and mentions each new
+  item on its phase's page. A new item is a sub-issue of its phase issue (phase 2 is #30).
+  The reference for docs-kit's plan is `docs/docs-kit-plan.md` (not `docs/plan.md`: on this
+  Mac's disk that's the same file as `docs/PLAN.md`).
 
 - **Work in a worktree of your own**, never in the main checkout: `EnterWorktree` with the
   branch's name (`<short-name>-<issue>`); a hook makes `.claude/worktrees/<branch>` from a

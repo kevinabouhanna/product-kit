@@ -7,7 +7,7 @@ A Claude Code plugin, for any project.
 Each grew out of NetworkMonitor, where a feature that changed the interface used to leave stale
 docs, stale screenshots and an untranslated page behind. product-kit makes them one system: one
 config, one list of languages, one manifest of what each picture shows, and one order to do it
-in. The plan is [#1](https://github.com/kevinabouhanna/product-kit/issues/1).
+in. The plan is [docs/PLAN.md](docs/PLAN.md), kept the same as the issues and the [project board](https://github.com/users/kevinabouhanna/projects/11).
 
 ```
 claude plugin install product-kit@kevinabouhanna --scope user
@@ -21,10 +21,10 @@ part. They share one config, `.product-kit.json`, with the languages listed once
 
 | Part | Does | State |
 |---|---|---|
-| `product-kit docs` (`docs-kit`) | Stage 1, **the plan**: `docs/PLAN.md` and its phase pages kept the same as GitHub's issues (one root issue, a phase issue per phase, items and steps under them), milestones and project board ([plan.md](docs/plan.md)). Then `docs/` as the one source: a check asks for docs with the feature, and the website's docs pages and the wiki are built from it. [Reference](docs/docs-kit.md) | ✅ |
+| `product-kit docs` (`docs-kit`) | Stage 1, **the plan**: `docs/PLAN.md` and its phase pages kept the same as GitHub's issues (one root issue, a phase issue per phase, items and steps under them), milestones and project board ([docs-kit-plan.md](docs/docs-kit-plan.md)). Then `docs/` as the one source: a check asks for docs with the feature, and the website's docs pages and the wiki are built from it. [Reference](docs/docs-kit.md) | ✅ |
 | `product-kit lang` (`lang-kit`) | Every language's table held to the app and to its glossary (Apple `.strings` and `.xcstrings`, JSON, `.resx`, Qt `.ts`); a changed page needs its copy; what each release changed, for the native reviewer; adding a language. [Reference](docs/lang-kit.md) | ✅ |
-| `product-kit shots` (`shots-kit`) | Every picture, GIF and video listed with the window it shows; reads each picture's window through the Accessibility API, or compares the app's own drawings of it pixel by pixel, retakes only those whose interface changed, and flags the videos. With or without a website. [Reference](docs/shots-kit.md) | ✅ macOS apps (NetworkMonitor, claude-profiles-mac); web and Windows: #1, step 5 |
-| `product-kit status` | What's out of date for a release, across all of it | #1, step 7 |
+| `product-kit shots` (`shots-kit`) | Every picture, GIF and video listed with the window it shows; reads each picture's window through the Accessibility API, or compares the app's own drawings of it pixel by pixel, retakes only those whose interface changed, and flags the videos. With or without a website. [Reference](docs/shots-kit.md) | ✅ macOS apps (NetworkMonitor, claude-profiles-mac); iPhone: #43; web views: #46; Windows: phase 3 |
+| `product-kit status` | What's out of date for a release, across all of it | #38 |
 
 ## The order
 
