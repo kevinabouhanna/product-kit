@@ -431,8 +431,11 @@ def doctor_findings(root: pathlib.Path) -> list[tuple]:
     codes = [source] + [c for c in config.get("languages", {}) if c != source]
     pattern = (lang.get("strings") or {}).get("path")
     source_path = (lang.get("strings") or {}).get("source_path")
+    # Every table lang-kit checks: the main one and `lang.more`'s (#41).
+    patterns = [x for x in [pattern] + [m.get("path") for m in lang.get("more", [])] if x]
+    sources = {source_path} | {m.get("source_path") for m in lang.get("more", [])}
     loose = [t for t in text_tables(root)
-             if not (pattern and covered_by(pattern, t, codes)) and t != source_path
+             if not any(covered_by(x, t, codes) or x == t for x in patterns) and t not in sources
              and not t.endswith("Glossary.json")]
     if loose:
         shown = ", ".join(loose[:6]) + (f" and {len(loose) - 6} more" if len(loose) > 6 else "")
@@ -476,6 +479,12 @@ def doctor_findings(root: pathlib.Path) -> list[tuple]:
             missing.append(pattern.replace("{code}", code))
         if missing:
             found.append((f"{code} has no {', '.join(missing)}", f"`lang-kit add {code}` lists what a language needs"))
+        # Written right to left: GitHub shows Markdown left to right unless told (#41).
+        rtl_page = root / f"README.{code}.md"
+        if code.split("-")[0] in {"ar", "he", "fa", "ur", "ps", "yi", "dv", "ckb", "sd", "ug"} and rtl_page.exists() \
+                and 'dir="rtl"' not in rtl_page.read_text(errors="replace"):
+            found.append((f"README.{code}.md is right to left but reads left to right on GitHub",
+                          'put it inside <div dir="rtl"> … </div>, as each of its docs pages'))
 
     # The project's own checks.
     for check in config.get("checks", []):

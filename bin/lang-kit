@@ -40,7 +40,7 @@ import subprocess
 import sys
 import xml.etree.ElementTree as ET
 
-VERSION = "2.4.0"
+VERSION = "2.5.0"
 CONFIGS = (".product-kit.json", ".docs-kit.json")
 
 
@@ -183,19 +183,62 @@ def _blank_strings_comments(text: str) -> str:
 
 
 def read_xcstrings(text: str, code: str) -> dict[str, str]:
-    """Xcode's string catalog: every language in one file."""
+    """Xcode's string catalog: every language in one file. A text that varies by count
+    (`variations.plural`) reads as its `other` form here; `plural_problems` checks the rest."""
     catalog = json.loads(text)
     source = catalog.get("sourceLanguage", "en")
     table = {}
     for key, entry in catalog.get("strings", {}).items():
         if entry.get("shouldTranslate") is False:
             continue
-        unit = entry.get("localizations", {}).get(code, {}).get("stringUnit", {})
+        local = entry.get("localizations", {}).get(code, {})
+        unit = local.get("stringUnit", {})
+        plural = local.get("variations", {}).get("plural", {})
         if unit.get("value") is not None and unit.get("state") != "new":
             table[key] = unit["value"]
+        elif plural:
+            other = plural.get("other", {}).get("stringUnit", {})
+            if other.get("value") is not None and other.get("state") != "new":
+                table[key] = other["value"]
         elif code == source:
             table[key] = key
     return table
+
+
+def read_stringsdict(text: str, code: str) -> dict[str, str]:
+    """Apple's .stringsdict: a text that varies by count, each key's `other` form (product-kit#41)."""
+    import plistlib
+    table = {}
+    for key, entry in plistlib.loads(text.encode("utf-8")).items():
+        if not isinstance(entry, dict):
+            continue
+        forms = [v for k, v in entry.items() if isinstance(v, dict) and v.get("NSStringFormatSpecTypeKey")]
+        table[key] = forms[0].get("other", entry.get("NSStringLocalizedFormatKey", "")) if forms else \
+            entry.get("NSStringLocalizedFormatKey", "")
+    return table
+
+
+# The forms a count takes in each language (Unicode's plural rules, for whole numbers): a text
+# that varies by count needs each of them (product-kit#41).
+PLURAL_FORMS = {
+    "zh": {"other"}, "ja": {"other"}, "ko": {"other"}, "th": {"other"}, "vi": {"other"}, "id": {"other"},
+    "ms": {"other"}, "tr": {"one", "other"},
+    "ru": {"one", "few", "many", "other"}, "uk": {"one", "few", "many", "other"},
+    "pl": {"one", "few", "many", "other"}, "cs": {"one", "few", "other"}, "sk": {"one", "few", "other"},
+    "ar": {"zero", "one", "two", "few", "many", "other"}, "he": {"one", "two", "other"},
+}
+
+
+def plural_forms(code: str) -> set[str]:
+    return PLURAL_FORMS.get(code.split("-")[0].split("_")[0], {"one", "other"})
+
+
+# Written right to left: a page in one needs `dir="rtl"` to read in order (product-kit#41).
+RTL = {"ar", "he", "fa", "ur", "ps", "yi", "dv", "ckb", "sd", "ug"}
+
+
+def is_rtl(code: str) -> bool:
+    return code.split("-")[0].split("_")[0] in RTL
 
 
 def read_json(text: str, code: str) -> dict[str, str]:
@@ -268,6 +311,7 @@ def command_reader(argv: list[str], root: pathlib.Path):
 FORMATS = {
     "strings": (read_strings, "printf"),
     "xcstrings": (read_xcstrings, "printf"),
+    "stringsdict": (read_stringsdict, "printf"),
     "json": (read_json, "braces"),
     "resx": (read_resx, "braces"),
     "ts": (read_ts, "qt"),
@@ -310,6 +354,22 @@ class Project:
             self.style = tables.get("placeholders", style)
             self.format = fmt
 
+    def views(self) -> list["Project"]:
+        """The project once per table of the app's text: the main one (`lang.strings`) and each of
+        `lang.more` (permission prompts, plurals, Shortcuts' phrases, widgets: product-kit#41)."""
+        import copy
+        out = [self] if self.tables else []
+        for spec in self.lang.get("more", []):
+            view = copy.copy(self)
+            fmt = spec.get("format", "strings")
+            if fmt not in FORMATS:
+                fail(f"lang.more's {spec.get('path')}: format {fmt!r} isn't one of {', '.join(FORMATS)}")
+            view.tables, view.format = spec, fmt
+            view.reader, style = FORMATS[fmt]
+            view.style = spec.get("placeholders", style)
+            out.append(view)
+        return out
+
     @staticmethod
     def find() -> "Project":
         top = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True)
@@ -342,12 +402,25 @@ class Project:
         except (ValueError, ET.ParseError) as error:
             fail(f"{path} doesn't read: {error}")
 
+    def plist_text(self) -> dict[str, str]:
+        """The text an Info.plist shows people, by key (`keys.plist`): its permission prompts
+        (`…UsageDescription`), its names, its copyright; or the keys `keys.plist_keys` names."""
+        import plistlib
+        spec = self.tables.get("keys", {})
+        with open(self.root / spec["plist"], "rb") as f:
+            info = plistlib.load(f)
+        wanted = spec.get("plist_keys")
+        shown = re.compile(r".*UsageDescription$|CFBundleDisplayName$|CFBundleName$|NSHumanReadableCopyright$")
+        return {k: v for k, v in info.items() if isinstance(v, str) and (k in wanted if wanted else shown.match(k))}
+
     def keys(self) -> set[str]:
-        """The text to translate: from the sources (`keys.scan`), or the
-        source language's table, or (Qt) every message any table lists."""
+        """The text to translate: from the sources (`keys.scan`), or an Info.plist
+        (`keys.plist`), or the source language's table, or (Qt) every message any table lists."""
         spec = self.tables.get("keys", {})
         if spec.get("scan"):
             return self.scan(spec)
+        if spec.get("plist"):
+            return set(self.plist_text())
         if self.format == "ts":
             keys = set()
             for code in self.languages:
@@ -361,6 +434,8 @@ class Project:
     def english(self, ref: str | None = None) -> dict[str, str]:
         """Each key's text in the source language, where the key isn't the text
         itself (JSON's menu.quit, a .resx name); empty when it is."""
+        if self.tables.get("keys", {}).get("plist"):
+            return self.plist_text()
         if self.tables.get("keys", {}).get("scan") or self.format == "ts":
             return {}
         return {k: v for k, v in (self.table(self.source, ref) or {}).items() if v is not None and v != k}
@@ -460,8 +535,9 @@ class Project:
 # lang-kit strings
 
 
-def glossary_problems(glossary: dict, table: dict, keys: set[str]) -> list[str]:
-    """Where the table names things otherwise than its glossary."""
+def glossary_problems(glossary: dict, table: dict, keys: set[str], whole: bool = True) -> list[str]:
+    """Where the table names things otherwise than its glossary; `whole`: it's the app's main
+    table, so a term it doesn't say is a term the app no longer says."""
     problems = []
     for term in glossary.get("terms", []):
         if term.get("where") == "docs":
@@ -479,7 +555,7 @@ def glossary_problems(glossary: dict, table: dict, keys: set[str]) -> list[str]:
                     translated = table.get(key)
                     if translated is not None and text not in translated:
                         problems.append(f'"{key}" → "{translated}" doesn\'t say "{text}" for "{en}"')
-        if not said:
+        if not said and whole:
             problems.append(f'the app no longer says "{en}": change the glossary\'s term, or mark it "where": "docs"')
     for avoid in glossary.get("avoid", []):
         for english, translated in sorted(table.items()):
@@ -488,9 +564,49 @@ def glossary_problems(glossary: dict, table: dict, keys: set[str]) -> list[str]:
     return problems
 
 
+def plural_problems(project: Project, code: str) -> list[str]:
+    """A text that varies by count needs each form the language has (product-kit#41)."""
+    need = plural_forms(code)
+    path = project.root / project.table_path(code)
+    if not path.exists():
+        return []
+    problems = []
+    if project.format == "xcstrings":
+        catalog = json.loads(path.read_text(encoding="utf-8"))
+        source = catalog.get("sourceLanguage", "en")
+        for key, entry in catalog.get("strings", {}).items():
+            locs = entry.get("localizations", {})
+            if not locs.get(source, {}).get("variations", {}).get("plural") and \
+                    not any(l.get("variations", {}).get("plural") for l in locs.values()):
+                continue
+            have = {k for k, v in locs.get(code, {}).get("variations", {}).get("plural", {}).items()
+                    if v.get("stringUnit", {}).get("value")}
+            if have and need - have:
+                problems.append(f'"{key}" varies by count but has no {", ".join(sorted(need - have))} form in {code}')
+    elif project.format == "stringsdict":
+        import plistlib
+        for key, entry in plistlib.loads(path.read_bytes()).items():
+            for name, form in (entry.items() if isinstance(entry, dict) else []):
+                if isinstance(form, dict) and form.get("NSStringFormatSpecTypeKey"):
+                    missing = need - {k for k in form if k in ("zero", "one", "two", "few", "many", "other") and form[k]}
+                    if missing:
+                        problems.append(f'"{key}" ({name}) has no {", ".join(sorted(missing))} form in {code}')
+    return problems
+
+
 def strings(project: Project) -> int:
-    if not project.tables:
+    views = project.views()
+    if not views:
         fail(f"{project.config_name} has no lang.strings: where the tables are, and their format")
+    failed = 0
+    for view in views:
+        if len(views) > 1:
+            print(f"lang-kit: {view.tables.get('path')}")
+        failed += strings_one(view)
+    return 1 if failed else 0
+
+
+def strings_one(project: Project) -> int:
     keys = project.keys()
     source = project.english()
     failed = 0
@@ -515,6 +631,7 @@ def strings(project: Project) -> int:
             english = source.get(key, key)
             if placeholders(english, project.style) != placeholders(translated, project.style):
                 problems.append(f'placeholders differ: "{english}" → "{translated}"')
+        problems += plural_problems(project, code)
         glossary, path = project.glossary(code)
         if path and glossary is None:
             problems.append(f"no glossary at {path}: write it first (`lang-kit add` starts one)")
@@ -523,7 +640,8 @@ def strings(project: Project) -> int:
                 problems.append(f"{path} says it's {glossary.get('language')!r}")
             # The glossary is in English words, whatever the keys are.
             problems += glossary_problems(glossary, {source.get(k, k): v for k, v in done.items()},
-                                          {source.get(k, k) for k in keys})
+                                          {source.get(k, k) for k in keys},
+                                          whole=project.tables is project.lang.get("strings"))
         if problems:
             failed += 1
             print(f"lang-kit: {project.name(code)} ({code}):")
@@ -690,7 +808,13 @@ def todo_packets(project: Project, since: str | None) -> list[dict]:
 
 def todo(project: Project, rest: list[str]) -> int:
     since = rest[rest.index("--since") + 1] if "--since" in rest and rest.index("--since") + 1 < len(rest) else None
-    packets = todo_packets(project, since)
+    views = project.views() or [project]
+    packets = []
+    for view in views:
+        for packet in todo_packets(view, since):
+            if len(views) > 1:
+                packet["table"] = view.tables.get("path")
+            packets.append(packet)
     if "--json" in rest:
         print(json.dumps(packets, indent=1, ensure_ascii=False))
         return 0
@@ -699,6 +823,7 @@ def todo(project: Project, rest: list[str]) -> int:
         return 0
     for packet in packets:
         print(f"{packet['name']} ({packet['language']}): {len(packet['items'])} to translate"
+              + (f" in {packet['table']}" if packet.get("table") else "")
               + (f"; style: {packet['style']}" if packet.get("style") else "")
               + (f"; never: {', '.join(packet['avoid'])}" if packet.get("avoid") else ""))
         for item in packet["items"]:
@@ -712,7 +837,8 @@ def todo(project: Project, rest: list[str]) -> int:
             if item.get("where"):
                 line += " · " + ", ".join(item["where"])
             print(line)
-    print('Write {"<code>": {"<key>": "<translation>"}} to a file, then `lang-kit apply <file>`.')
+    print('Write {"<code>": {"<key>": "<translation>"}} to a file, then `lang-kit apply <file>`'
+          + (" (`--table <path>` for a table other than the first)" if len(views) > 1 else "") + ".")
     return 0
 
 
@@ -787,7 +913,12 @@ def write_translations(project: Project, code: str, given: dict[str, str]) -> in
     return len(given)
 
 
-def apply(project: Project, file: str) -> int:
+def apply(project: Project, file: str, table: str | None = None) -> int:
+    if table:
+        view = next((v for v in project.views() if v.tables.get("path") == table), None)
+        if view is None:
+            fail(f"no table {table!r}: one of " + ", ".join(v.tables.get("path", "?") for v in project.views()))
+        project = view
     try:
         given = json.loads(pathlib.Path(file).read_text(encoding="utf-8"))
     except (OSError, ValueError) as error:
@@ -842,8 +973,22 @@ def add(project: Project | None, root: pathlib.Path, code: str, name: str | None
                             f"/* {name or code}: the app's text (`lang-kit strings` lists what's missing). */\n",
                             encoding="utf-8")
             done.append(f"wrote {path.relative_to(root)}")
+    for spec in project.lang.get("more", []):
+        if spec.get("format", "strings") != "strings" or "{code}" not in spec.get("path", ""):
+            continue
+        path = root / spec["path"].replace("{code}", code)
+        if not path.exists():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(f"/* {name or code}: {pathlib.PurePosixPath(spec['path']).name} "
+                            f"(`lang-kit strings` lists what's missing). */\n", encoding="utf-8")
+            done.append(f"wrote {path.relative_to(root)}")
     for line in done:
         print(f"lang-kit: {line}")
+    if is_rtl(code):
+        print(f"""
+{name or code} is written right to left: its README and docs pages go inside <div dir="rtl"> … </div>
+(GitHub shows Markdown left to right otherwise), its website page has dir="rtl" on <html>, and
+its pictures are taken of the app in it, which macOS mirrors by itself.""")
     print(f"""
 Then, in order:
   1. The glossary first: each term's text, the language's style, words to avoid, and
@@ -924,7 +1069,8 @@ def main(argv: list[str]) -> int:
     if command == "apply":
         if not rest:
             fail("usage: lang-kit apply <file of translations>")
-        return apply(project, rest[0])
+        table = rest[rest.index("--table") + 1] if "--table" in rest and rest.index("--table") + 1 < len(rest) else None
+        return apply(project, rest[0], table)
     fail(f"no command {command!r}: strings, check, review, todo, apply, add, keys, vendor, version")
     return 2
 

@@ -36,12 +36,22 @@ there's no `.product-kit.json`.
 |---|---|
 | `languages` | `{"<code>": {"name": "简体中文", "site": "zh"}}`: each translation. Shared with docs-kit. |
 | `lang.source` | The source language's code (`en`; else `site.language`). |
-| `lang.strings.format` | `strings` (Apple), `xcstrings` (Xcode's string catalog), `json` (nested objects flattened with dots), `resx` (.NET), `ts` (Qt), or `command`: a kind lang-kit doesn't read, read by the project's own command (#37). |
+| `lang.strings.format` | `strings` (Apple), `xcstrings` (Xcode's string catalog, plurals included), `stringsdict` (Apple's counts), `json` (nested objects flattened with dots), `resx` (.NET), `ts` (Qt), or `command`: a kind lang-kit doesn't read, read by the project's own command (#37). |
 | `lang.strings.read` | With `command`: the command, from the checkout, `{file}` for a file holding the table and `{code}` for its language: `["python3", "scripts/read-properties", "{file}", "{code}"]`. It prints the table as JSON, `{"key": "text"}`, and exits 0. Its placeholders are compared as `printf`'s unless `lang.strings.placeholders` says otherwise. |
 | `lang.strings.path` | Where a language's table is, with `{code}`: `Resources/Localization/{code}.lproj/Localizable.strings`. One file for every language with `xcstrings`. |
 | `lang.strings.source_path` | The source language's table, where it isn't `path` with its code (`Strings.resx` beside `Strings.{code}.resx`). |
 | `lang.strings.keys.scan` | Globs of source files to read the text to translate from, when the source language has no table of its own (NetworkMonitor's keys are the English, written inside `L("…")`). Without it, the keys are the source table's (or, for Qt, every message the tables list). |
 | `lang.strings.keys.except` | Globs left out of the scan. |
+| `lang.strings.keys.plist` | An Info.plist whose text people see is the text to translate: its permission prompts (`…UsageDescription`), its names and its copyright, or the keys `keys.plist_keys` lists. For `InfoPlist.strings`, which has no English table of its own. |
+| `lang.more` | More tables than the main one, each like `lang.strings` (`format`, `path`, `source_path`, `keys`) and checked the same way: the permission prompts (`InfoPlist.strings` with `keys.plist`), counts (`stringsdict`), Shortcuts' phrases (`AppShortcuts.xcstrings`), a widget's or an extension's table (#41). `todo` gives a packet per table; `apply --table <path>` writes into one; `add` sets up a new language's. |
+
+**Apple's other text (#41).** `stringsdict` is a format of its own. A text that varies by count
+(a `.stringsdict`, or a catalog's `variations.plural`) needs every form its language has for
+whole numbers: `other` in Chinese, Japanese and Korean; `one` and `other` in English, French
+and most others; `one`, `few`, `many` and `other` in Russian and Polish; all six in Arabic.
+**A language written right to left** (Arabic, Hebrew, Persian, Urdu…): `lang-kit add` says what it
+needs (`<div dir="rtl">` around its Markdown pages, `dir="rtl"` on its site page; macOS mirrors
+the app by itself for its pictures), and `product-kit doctor` names a README that isn't marked.
 | `lang.strings.keys.call` | The function the text is passed to (`L`), or `pattern`: a regex whose first group is the literal. |
 | `lang.strings.placeholders` | `printf` (`%@`, `%1$d`), `braces` (`{0}`, `{name}`), `qt` (`%1`), or `none`. Each format has its own by default. |
 | `lang.glossary` | Where a language's glossary is, with `{code}`. Each language must have one when this is set. |
