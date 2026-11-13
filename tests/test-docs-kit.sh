@@ -173,150 +173,223 @@ expect "vendor copies it to Scripts/docs-kit, runnable" '[ -x Scripts/docs-kit ]
 expect "--check passes once it's the same" '"$KIT" vendor --check >/dev/null'
 
 echo "--- plan"
-# GitHub, recorded: a stand-in for gh that answers the plan's query, a page at a time.
+# GitHub, as a stand-in that keeps its state in a file: milestones, issues, the board.
 Q="$TMP/planned"
-mkdir -p "$Q/docs/phases" "$TMP/gh"
-cat >"$TMP/gh/make.py" <<'EOF'
-import json, pathlib, sys
-here = pathlib.Path(sys.argv[0]).parent
-variant = sys.argv[1] if len(sys.argv) > 1 else "base"
-def item(order, horizon, number=8):
-    return {"project": {"number": number, "owner": {"login": "Someone"}},
-            "order": {"number": order} if order is not None else None,
-            "horizon": {"name": horizon} if horizon else None}
-def issue(n, title, milestone, parent=None, items=()):
-    return {"number": n, "title": title, "milestone": {"title": milestone} if milestone else None,
-            "parent": parent, "projectItems": {"nodes": list(items)}}
-milestones = [
-    {"number": 1, "title": "Phase 1: One", "state": "OPEN", "dueOn": "2027-01-01T00:00:00Z"},
-    {"number": 2, "title": "Phase 2: Two", "state": "OPEN", "dueOn": "2027-02-01T00:00:00Z"},
-    {"number": 3, "title": "Phase 0: Start", "state": "CLOSED", "dueOn": None},
-    {"number": 4, "title": "Ideas", "state": "OPEN", "dueOn": None},
+G="$TMP/gh"
+mkdir -p "$Q/docs/phases" "$G"
+cat >"$G/make.py" <<'EOF'
+import json, sys
+def issue(n, title, state="OPEN", milestone=None, parent=None, labels=(), body=""):
+    return {"id": f"I{n}", "number": n, "title": title, "state": state, "milestone": milestone, "parent": parent,
+            "labels": list(labels), "body": body}
+def opts(*names):
+    return [{"id": f"o-{n}", "name": n} for n in names]
+issues = [
+    issue(10, "First plan", milestone="Phase 1: One"),
+    issue(11, "A step of the first", milestone="Phase 1: One", parent=10),
+    issue(12, "Second | plan", milestone="Phase 2: Two"),
+    issue(13, "Orphan step", milestone="Phase 2: Two", parent=99),
+    issue(14, "An idea", milestone="Ideas"),
+    issue(5, "Long done", state="CLOSED", milestone="Phase 0: Start"),
+    issue(99, "A closed parent", state="CLOSED"),
 ]
-first = [
-    issue(10, "First plan", "Phase 1: One", None, [item(2, "Now")]),
-    issue(11, "A step of the first", "Phase 1: One", {"number": 10, "state": "OPEN"}, [item(2, "Now")]),
-    issue(12, "Second | plan", "Phase 2: Two", None, [item(9, "Now", number=9), item(1, "Next")]),
-    issue(13, "Orphan step", "Phase 2: Two", {"number": 99, "state": "CLOSED"}, [item(None, "Later")]),
-]
-second = [
-    issue(14, "An idea", "Ideas", None, [item(3, "Later")]),
-    issue(15, "Not in a milestone", None),
-]
-if variant == "empty-milestone":
-    milestones.append({"number": 5, "title": "Phase 3: Empty", "state": "OPEN", "dueOn": None})
-if variant == "off-board":
-    first[1]["projectItems"]["nodes"] = []
-if variant == "no-horizon":
-    first[1]["projectItems"]["nodes"][0]["horizon"] = None
-fields = [{"name": "Title", "dataType": "TITLE"}, {"name": "Order", "dataType": "NUMBER"},
-          {"name": "Horizon", "dataType": "SINGLE_SELECT", "options": [{"name": n} for n in ("Now", "Next", "Later")]}]
-def page(nodes, more):
-    return {"data": {"repository": {"milestones": {"nodes": milestones},
-                                    "issues": {"pageInfo": {"hasNextPage": more, "endCursor": "c1"}, "nodes": nodes}},
-                     "repositoryOwner": {"projectV2": {"title": "Board", "fields": {"nodes": fields}}}}}
-(here / "answer1.json").write_text(json.dumps(page(first, True)))
-(here / "answer2.json").write_text(json.dumps(page(second, False)))
-if variant == "error":
-    (here / "answer1.json").write_text(json.dumps({"data": None, "errors": [{"message": "Could not resolve to a ProjectV2"}]}))
+def item(n, **values):
+    return str(n), {"id": f"PVTI_{n}", "values": values}
+state = {
+    "repo": "someone/thing", "repo_id": "R1", "next": 1000,
+    "milestones": [
+        {"id": "M1", "number": 1, "title": "Phase 1: One", "state": "OPEN", "dueOn": "2027-01-01T00:00:00Z"},
+        {"id": "M2", "number": 2, "title": "Phase 2: Two", "state": "OPEN", "dueOn": "2027-02-01T00:00:00Z"},
+        {"id": "M3", "number": 3, "title": "Phase 0: Start", "state": "CLOSED", "dueOn": None},
+        {"id": "M4", "number": 4, "title": "Ideas", "state": "OPEN", "dueOn": None},
+    ],
+    "labels": [{"id": "L1", "name": "bug"}],
+    "issues": {str(i["number"]): i for i in issues},
+    "board": {
+        "id": "P1", "title": "Board", "owner": "Someone", "number": 8, "type": "User",
+        "fields": [
+            {"id": "F1", "databaseId": 1, "name": "Title", "dataType": "TITLE"},
+            {"id": "F2", "databaseId": 2, "name": "Status", "dataType": "SINGLE_SELECT", "options": opts("Todo", "In Progress", "Done")},
+            {"id": "F3", "databaseId": 3, "name": "Order", "dataType": "NUMBER"},
+            {"id": "F4", "databaseId": 4, "name": "Horizon", "dataType": "SINGLE_SELECT", "options": opts("Now", "Next", "Later")},
+            {"id": "F5", "databaseId": 5, "name": "Milestone", "dataType": "MILESTONE"},
+            {"id": "F6", "databaseId": 6, "name": "Track", "dataType": "SINGLE_SELECT", "options": opts("Ears", "Hands")},
+        ],
+        "items": dict([
+            item(10, Order=2, Horizon="Now", Status="Todo", Track="Ears"),
+            item(11, Order=7, Horizon="Later", Status="In Progress"),
+            item(12, Order=1, Horizon="Next", Status="Todo"),
+            item(13, Horizon="Later", Status="Todo"),
+            item(14, Order=3, Horizon="Later", Status="Todo"),
+            item(5, Status="Todo"),
+        ]),
+        "views": [{"id": "V1", "number": 1, "name": "Issues", "filter": "no:parent-issue"},
+                  {"id": "V2", "number": 2, "name": "Roadmap", "filter": "no:parent-issue"}],
+    },
+}
+json.dump(state, open(sys.argv[1], "w"), indent=1)
 EOF
-cat >"$TMP/gh/gh.py" <<'EOF'
-import pathlib, sys
-here = pathlib.Path(sys.argv[0]).parent
-flaky = here / "flaky"
-if flaky.exists() and int(flaky.read_text()) > 0:
-    flaky.write_text(str(int(flaky.read_text()) - 1))
-    sys.exit("connection reset by peer")
-(here / "calls").open("a").write(" ".join(a for a in sys.argv[1:] if not a.startswith("query=")) + "\n")
-print((here / ("answer2.json" if any(a.startswith("after=") for a in sys.argv) else "answer1.json")).read_text())
-EOF
-gh_answers() { python3 -I "$TMP/gh/make.py" "${1:-base}"; }
-gh_answers
-export DOCS_KIT_GH="python3 -I $TMP/gh/gh.py" DOCS_KIT_RETRY_WAIT=0
+python3 -I "$G/make.py" "$G/github.json"
+export DOCS_KIT_GH="python3 -I $(dirname "$KIT")/../tests/fake-github.py $G/github.json" DOCS_KIT_RETRY_WAIT=0 FAKE_PAGE=3
+gh_state() { python3 -I -c 'import json,sys; s=json.load(open(sys.argv[1])); print(eval(sys.argv[2], {"s": s, "i": s["issues"], "b": s["board"]}))' "$G/github.json" "$1"; }
 cd "$Q" || exit 1
 git init -q -b main . && git config user.email t@example.com && git config user.name t
 cat >.product-kit.json <<'EOF'
 {
   "repo": "someone/thing",
-  "plan": { "pages": "docs/phases", "index": "docs/phases/README.md",
+  "name": "Thing",
+  "plan": { "pages": "docs/phases", "index": "docs/phases/README.md", "inherit": ["Track"],
             "project": { "owner": "someone", "number": 8 }, "no_page": ["Ideas"] }
 }
 EOF
+printf '# The plan\n\nThing does [one thing](phases/1-one.md) well.\n\n## More\n' >docs/PLAN.md
 printf '# Phase 1: One\n\n**Milestone:** Phase 1: One · **Status:** Now\n\nThe first: #10.\n' >docs/phases/1-one.md
 printf '# Phase 2: Two\n\n**Milestone:** Phase 2: Two · **Status:** Next\n\n#12 and #13, after #10 in phase one.\n' >docs/phases/2-two.md
 printf '# Phase 0: Start\n\n**Milestone:** Phase 0: Start · **Status:** Done\n' >docs/phases/0-start.md
 printf '# Our plan\n\nWhat the phases are.\n\n## Old\n\nStale.\n' >docs/phases/README.md
 git add -A && git commit -qm plan
 
-expect "plan index --check says when the index is out of date" '! "$KIT" plan index --check >/dev/null'
-"$KIT" plan index >/dev/null || fail "plan index ran"
+out="$("$KIT" plan check 2>&1)"
+expect "before init, check says the board has no Level" 'grep -q "has no field \"Level\"" <<<"$out"'
+expect "sync won't start without it" '! "$KIT" plan sync >/dev/null 2>&1'
+cp "$G/github.json" "$G/before.json"
+out="$("$KIT" plan init --dry-run 2>&1)"
+expect "init --dry-run says what it would do and changes nothing" \
+  'grep -q "field \"Level\" made" <<<"$out" && grep -q "made, the plan" <<<"$out" && cmp -s "$G/github.json" "$G/before.json" && git diff --quiet'
+out="$("$KIT" plan init 2>&1)"; status=$?
+expect "init sets the plan up" '[ $status -eq 0 ]'
+[ $status -eq 0 ] || echo "$out"
+root="$(gh_state '[n for n, x in i.items() if "plan" in x["labels"]][0]')"
+p1="$(gh_state '[n for n, x in i.items() if x["title"] == "Phase 1: One" and "phase" in x["labels"]][0]')"
+p2="$(gh_state '[n for n, x in i.items() if x["title"] == "Phase 2: Two"][0]')"
+p0="$(gh_state '[n for n, x in i.items() if x["title"] == "Phase 0: Start"][0]')"
+pi="$(gh_state '[n for n, x in i.items() if x["title"] == "Ideas"][0]')"
+expect "the board has a Level field: Plan, Phase, Item, Step" \
+  '[ "$(gh_state "[o[\"name\"] for f in b[\"fields\"] if f[\"name\"] == \"Level\" for o in f[\"options\"]]")" = "['"'"'Plan'"'"', '"'"'Phase'"'"', '"'"'Item'"'"', '"'"'Step'"'"']" ]'
+expect "one root issue, The plan: Thing, labelled and pinned" \
+  '[ "$(gh_state "(i[\"$root\"][\"title\"], i[\"$root\"].get(\"pinned\"))")" = "('"'"'The plan: Thing'"'"', True)" ]'
+expect "a phase issue per milestone with a page or open, under the root, in its milestone" \
+  '[ "$(gh_state "sorted((x[\"title\"], x[\"parent\"] == $root, x[\"milestone\"] == x[\"title\"]) for x in i.values() if \"phase\" in x[\"labels\"])")" = "[('"'"'Ideas'"'"', True, True), ('"'"'Phase 0: Start'"'"', True, True), ('"'"'Phase 1: One'"'"', True, True), ('"'"'Phase 2: Two'"'"', True, True)]" ]'
+expect "a finished phase's issue is closed, and Done" \
+  '[ "$(gh_state "(i[\"$p0\"][\"state\"], b[\"items\"][\"$p0\"][\"values\"][\"Status\"])")" = "('"'"'CLOSED'"'"', '"'"'Done'"'"')" ]'
+expect "items go under their phase; a step stays under its item" \
+  '[ "$(gh_state "[i[n][\"parent\"] for n in (\"10\", \"11\", \"12\", \"14\")]")" = "[$p1, 10, $p2, $pi]" ]'
+expect "an open step under a closed parent: the parent goes under the phase" '[ "$(gh_state "i[\"99\"][\"parent\"]")" = "$p2" ]'
+expect "Level from the tree" \
+  '[ "$(gh_state "[b[\"items\"][n][\"values\"].get(\"Level\") for n in (\"$root\", \"$p1\", \"10\", \"11\", \"13\")]")" = "['"'"'Plan'"'"', '"'"'Phase'"'"', '"'"'Item'"'"', '"'"'Step'"'"', '"'"'Step'"'"']" ]'
+expect "a step copies its item's Order, Horizon and inherited fields; its Status is its own" \
+  '[ "$(gh_state "[b[\"items\"][\"11\"][\"values\"].get(k) for k in (\"Order\", \"Horizon\", \"Track\", \"Status\")]")" = "[2.0, '"'"'Now'"'"', '"'"'Ears'"'"', '"'"'In Progress'"'"']" ]'
+expect "a phase's Horizon is its items' earliest, its Order their lowest" \
+  '[ "$(gh_state "[b[\"items\"][\"$p1\"][\"values\"].get(k) for k in (\"Horizon\", \"Order\")]")" = "['"'"'Now'"'"', 2.0]" ]'
+expect "a closed issue is Done on the board" '[ "$(gh_state "b[\"items\"][\"5\"][\"values\"][\"Status\"]")" = "Done" ]'
+body="$(gh_state "i[\"$root\"][\"body\"]")"
+expect "the root's description: the plan's first paragraph, its links made whole" \
+  'grep -qF "Thing does [one thing](https://github.com/someone/thing/blob/main/docs/phases/1-one.md) well." <<<"$body"'
+expect "then the items by Horizon, each with its phase and phase issue" \
+  'grep -qF "| 2 | #10 First plan | [Phase 1: One](https://github.com/someone/thing/blob/main/docs/phases/1-one.md) #$p1 |" <<<"$body" && grep -q "^## Now" <<<"$body"'
+expect "and the finished phases last" 'grep -A2 "^## Done" <<<"$body" | grep -qF "[Phase 0: Start]"'
+expect "the plan's views: made, or their filters put right" \
+  '[ "$(gh_state "sorted((v[\"name\"], v[\"filter\"]) for v in b[\"views\"])")" = "[('"'"'In order'"'"', '"'"'is:open level:Item,Step'"'"'), ('"'"'Issues'"'"', '"'"'no:parent-issue'"'"'), ('"'"'Now · Next · Later'"'"', '"'"'is:open level:Item'"'"'), ('"'"'Roadmap'"'"', '"'"'is:open level:Phase,Item'"'"')]" ]'
+expect "the board view's columns are the Horizon, sorted by Order" \
+  '[ "$(gh_state "[(v[\"vertical_group_by\"], v[\"sort_by\"]) for v in b[\"views\"] if v[\"name\"].startswith(\"Now\")]")" = "[([4], [[3, '"'"'asc'"'"']])]" ]'
 index="$(cat docs/phases/README.md)"
-expect "the index keeps the text above its first section, under a note" \
-  '[ "$(sed -n 1,4p docs/phases/README.md | tail -3)" = "$(printf "# Our plan\n\nWhat the phases are.")" ] && grep -q "^<!-- Written by .docs-kit plan index" <<<"$index" && ! grep -q Stale <<<"$index"'
-expect "a section per Horizon, in the board's order, and Done last" \
-  '[ "$(grep "^## " <<<"$index" | tr "\n" " ")" = "## Now ## Next ## Later ## Done " ]'
-expect "a row per plan: Order, #N title, the phase's page" \
-  'grep -qF "| 2 | #10 First plan | [Phase 1: One](1-one.md) |" <<<"$index"'
-expect "the board's own item counts, not another board's" 'grep -qF "| 1 | #12 Second \| plan | [Phase 2: Two](2-two.md) |" <<<"$index"'
-expect "a sub-issue isn't a plan, unless its parent is closed" \
-  '! grep -q "#11" <<<"$index" && grep -q "#13 Orphan step" <<<"$index"'
-expect "plans by Order, those with none last; a phase with no page by name" \
-  '[ "$(grep -o "#1[34] [A-Za-z ]*| [A-Za-z]*" <<<"$index" | tr "\n" ";")" = "#14 An idea | Ideas;#13 Orphan step | ;" ]'
-expect "Done links the finished phases" 'grep -qx "\[Phase 0: Start\](0-start.md)" <<<"$index"'
-expect "the second page of issues is read" 'grep -q "after=c1" "$TMP/gh/calls"'
-expect "index again changes nothing" '"$KIT" plan index | grep -q "already up to date" && "$KIT" plan index --check >/dev/null'
-expect "plan check passes when the pages, the milestones, the issues and the board agree" '"$KIT" plan check >/dev/null'
-git add -A && git commit -qm index
+expect "the index is written too, keeping its head" \
+  'grep -q "^<!-- Written by .docs-kit plan index" <<<"$index" && grep -q "^What the phases are" <<<"$index" && ! grep -q Stale <<<"$index"'
+expect "the index: a row per item, the board's own values" \
+  'grep -qF "| 2 | #10 First plan | [Phase 1: One](1-one.md) |" <<<"$index" && grep -qF "| 1 | #12 Second \| plan | [Phase 2: Two](2-two.md) |" <<<"$index"'
+expect "items by Order, those with none last; a phase with no page by name; Done last" \
+  '[ "$(grep -o "#1[34] [A-Za-z ]*| [A-Za-z]*" <<<"$index" | tr "\n" ";")" = "#14 An idea | Ideas;#13 Orphan step | ;" ] && grep -qx "\[Phase 0: Start\](0-start.md)" <<<"$index"'
+expect "issues are read a page at a time" 'grep -q "read the plan after=3" "$G/github.log"'
+out="$("$KIT" plan check 2>&1)"; status=$?
+expect "then check passes" '[ $status -eq 0 ] && grep -q "agree" <<<"$out"'
+[ $status -eq 0 ] || echo "$out"
+expect "and sync again changes nothing" '"$KIT" plan sync | grep -q "nothing to change"'
+git add -A && git commit -qm synced
 
 plan_fails() { # plan_fails <what it should say>
   out="$("$KIT" plan check 2>&1)"; [ $? -ne 0 ] && grep -qF "$1" <<<"$out" && ! grep -q Traceback <<<"$out"
 }
+gh_set() { python3 -I -c 'import json,sys; p=sys.argv[1]; s=json.load(open(p)); i=s["issues"]; b=s["board"]; exec(sys.argv[2]); json.dump(s, open(p, "w"))' "$G/github.json" "$1"; }
+
+gh_set 'i["20"] = {"id": "I20", "number": 20, "title": "A new idea", "state": "OPEN", "milestone": "Phase 1: One", "parent": None, "labels": [], "body": ""}'
+expect "a new issue in a milestone: check says sync would put it under its phase" 'plan_fails "#20 A new idea: now under #$p1 Phase 1: One"'
+expect "and that it has no Horizon, and its page doesn't mention it" \
+  'plan_fails "#20 A new idea (an item in \"Phase 1: One\") has no Horizon" && plan_fails "doesn'"'"'t mention #20 A new idea"'
+"$KIT" plan sync >/dev/null
+expect "sync puts it there, on the board, as an Item" \
+  '[ "$(gh_state "(i[\"20\"][\"parent\"], b[\"items\"][\"20\"][\"values\"].get(\"Level\"))")" = "($p1, '"'"'Item'"'"')" ]'
+gh_set 'b["items"]["20"]["values"]["Horizon"] = "Next"; b["items"]["20"]["values"]["Order"] = 4'
+printf 'And #20.\n' >>docs/phases/1-one.md
+"$KIT" plan sync >/dev/null
+expect "with its Horizon and a mention, check passes" '"$KIT" plan check >/dev/null'
+gh_set 'i["21"] = {"id": "I21", "number": 21, "title": "Somewhere", "state": "OPEN", "milestone": None, "parent": None, "labels": [], "body": ""}'
+expect "an open issue with no milestone and no parent isn't in the plan" 'plan_fails "#21 Somewhere isn'"'"'t in the plan: give it a milestone"'
+gh_set 'i["21"]["state"] = "CLOSED"'
+gh_set 'b["items"]["11"]["values"]["Horizon"] = "Later"'
+expect "a step whose Horizon isn't its item's: sync would copy it" 'plan_fails "#11 A step of the first: Horizon Now (from #10)"'
+gh_set 'i[str('"$root"')]["body"] += "\nEdited by hand."'
+expect "the root's description edited by hand: sync would write it again" 'plan_fails "the plan'"'"'s description written"'
+"$KIT" plan sync >/dev/null
+expect "sync puts both right" '"$KIT" plan check >/dev/null'
+
+gh_set 'i["30"] = {"id": "I30", "number": 30, "title": "Phase 3: Sub", "state": "OPEN", "milestone": "Phase 3: Sub", "parent": int('"$p2"'), "labels": ["phase"], "body": ""}; i["31"] = {"id": "I31", "number": 31, "title": "Deep", "state": "OPEN", "milestone": None, "parent": 30, "labels": [], "body": ""}; s["milestones"].append({"id": "M9", "number": 9, "title": "Phase 3: Sub", "state": "OPEN", "dueOn": None}); b["items"]["31"] = {"id": "PVTI_31", "values": {"Horizon": "Later", "Order": 9}}'
+printf '# Phase 3: Sub\n\n**Milestone:** Phase 3: Sub · **Status:** Later\n\nPart of phase two: #31.\n' >docs/phases/3-sub.md
+"$KIT" plan sync >/dev/null
+expect "a phase under a phase stays there; its items are Items, in its milestone" \
+  '[ "$(gh_state "(i[\"30\"][\"parent\"], i[\"31\"][\"milestone\"], b[\"items\"][\"31\"][\"values\"].get(\"Level\"), b[\"items\"][\"30\"][\"values\"].get(\"Level\"))")" = "($p2, '"'"'Phase 3: Sub'"'"', '"'"'Item'"'"', '"'"'Phase'"'"')" ]'
+expect "and the phase above counts them: its Order is its lowest" '[ "$(gh_state "b[\"items\"][\"$p2\"][\"values\"][\"Order\"]")" = "1.0" ]'
+expect "check passes with a sub-phase" '"$KIT" plan check >/dev/null'
+
+gh_set 'i["12"]["state"] = "CLOSED"; i["13"]["state"] = "CLOSED"; i["30"]["state"] = "CLOSED"; i["31"]["state"] = "CLOSED"; s["milestones"][-1]["state"] = "CLOSED"'
+out="$("$KIT" plan sync 2>&1)"
+expect "when a phase's work is all done, sync closes its issue, and its page says Done" \
+  '[ "$(gh_state "i[\"$p2\"][\"state\"]")" = "CLOSED" ] && grep -q "Status:\*\* Done" docs/phases/2-two.md && grep -qF "#$p2 Phase 2: Two: closed, everything in it is done" <<<"$out"'
+expect "it never closes an item or a step" '! grep -E "#1[0-9] .*: closed" <<<"$out"'
+gh_set 'i["12"]["state"] = "OPEN"'
+"$KIT" plan sync >/dev/null
+expect "work reopened in it reopens the phase" '[ "$(gh_state "i[\"$p2\"][\"state\"]")" = "OPEN" ]'
+git checkout -q docs/phases/2-two.md
+"$KIT" plan sync >/dev/null
+
 sed -i '' 's/Status:\*\* Now/Status:** Later/' docs/phases/1-one.md
-expect "a wrong Status fails, saying why" 'plan_fails "Status is Later, and should be Now (#10 is Now)"'
+expect "a wrong Status line: check says so" 'plan_fails "docs/phases/1-one.md: Status Now, was Later (#10 is Now)"'
 "$KIT" plan status --write >/dev/null
-expect "plan status --write puts it right" 'grep -q "Status:\*\* Now" docs/phases/1-one.md && "$KIT" plan check >/dev/null'
-printf '# Phase 1: One\n\nThe first: #10.\n' >docs/phases/1-one.md
+expect "plan status --write puts it right" 'grep -q "Status:\*\* Now" docs/phases/1-one.md'
+printf '# Phase 1: One\n\nThe first: #10 and #20.\n' >docs/phases/1-one.md
 "$KIT" plan status --write >/dev/null
 expect "--write adds the line under the title when the title is the milestone" \
   '[ "$(sed -n 3p docs/phases/1-one.md)" = "**Milestone:** Phase 1: One · **Status:** Now" ]'
+sed -i '' 's/#10 and //' docs/phases/1-one.md
+expect "an item its page doesn't mention fails" 'plan_fails "doesn'"'"'t mention #10 First plan"'
 git checkout -q docs/phases/1-one.md
-sed -i '' 's/#10/the first plan/' docs/phases/1-one.md
-expect "an open plan its page doesn't mention fails" 'plan_fails "doesn'"'"'t mention #10 First plan"'
+sed -i '' 's/Milestone:\*\* Phase 1: One/Milestone:** Phase 1: Uno/' docs/phases/1-one.md
+expect "a page naming a milestone GitHub doesn't have fails" 'plan_fails "no milestone \"Phase 1: Uno\""'
 git checkout -q docs/phases/1-one.md
-sed -i '' 's/Milestone:\*\* Phase 2: Two/Milestone:** Phase 2: Too/' docs/phases/2-two.md
-expect "a page naming a milestone GitHub doesn't have fails" 'plan_fails "no milestone \"Phase 2: Too\""'
-expect "and so does the milestone with no page" 'plan_fails "\"Phase 2: Two\" has no page"'
-git checkout -q docs/phases/2-two.md
 sed -i '' 's/"no_page": \["Ideas"\]/"no_page": []/' .product-kit.json
 expect "an open milestone with no page fails, unless no_page lists it" 'plan_fails "\"Ideas\" has no page in docs/phases/"'
 git checkout -q .product-kit.json
-sed -i '' 's/"number": 8 }/"number": 8 }, "fields": { "target": "Target" }/' .product-kit.json
-expect "a field the board doesn't have fails" 'plan_fails "has no field \"Target\" (plan.fields.target"'
-git checkout -q .product-kit.json
 printf '\nEdited by hand.\n' >>docs/phases/README.md
-expect "an index edited by hand fails" 'plan_fails "docs/phases/README.md is out of date"'
+expect "an index edited by hand fails" 'plan_fails "docs/phases/README.md: written"'
+expect "plan index --check says so too" '! "$KIT" plan index --check >/dev/null'
 git checkout -q docs/phases/README.md
-gh_answers empty-milestone
-printf '# Phase 3: Empty\n\n**Milestone:** Phase 3: Empty · **Status:** Done\n' >docs/phases/3-empty.md
-expect "an open milestone with no open issues fails: close it" 'plan_fails "\"Phase 3: Empty\" is open with no open issues: close it"'
-rm docs/phases/3-empty.md
-gh_answers off-board
-expect "an issue in a milestone that isn't on the board fails" 'plan_fails "#11 A step of the first (in \"Phase 1: One\") isn'"'"'t on the board"'
-gh_answers no-horizon
-expect "one with no Horizon fails" 'plan_fails "#11 A step of the first (in \"Phase 1: One\") has no Horizon"'
-gh_answers error
-expect "GitHub's errors are said plainly" 'plan_fails "GitHub said: Could not resolve to a ProjectV2"'
-gh_answers
-echo 2 >"$TMP/gh/flaky"
-expect "a failed call is tried again" '"$KIT" plan check >/dev/null'
-echo 9 >"$TMP/gh/flaky"
-expect "and gives up in plain words" 'plan_fails "couldn'"'"'t read the plan from GitHub: connection reset by peer"'
-rm "$TMP/gh/flaky"
-expect "gh signed out is said at once" \
-  'DOCS_KIT_GH="printf \"To get started with GitHub CLI, please run:  gh auth login\nAlternatively, populate the GH_TOKEN environment variable.\n\" >&2; exit 4 #" plan_fails "isn'"'"'t signed in to GitHub"'
+gh_set 's["milestones"].append({"id": "M8", "number": 8, "title": "Phase 4: Empty", "state": "OPEN", "dueOn": None})'
+printf '# Phase 4: Empty\n\n**Milestone:** Phase 4: Empty · **Status:** Done\n' >docs/phases/4-empty.md
+expect "an open milestone with nothing open in it fails: close it" 'plan_fails "\"Phase 4: Empty\" is open with nothing open in it: close it"'
+rm docs/phases/4-empty.md
+gh_set 's["milestones"].pop()'
+gh_set 'b["fields"] = [f for f in b["fields"] if f["name"] != "Track"]'
+expect "a field the config names that the board hasn't fails" 'plan_fails "has no field \"Track\" (plan.fields.inherit"'
+echo 2 >"$G/flaky"
+expect "a failed call is tried again" '"$KIT" plan status >/dev/null'
+echo 9 >"$G/flaky"
+expect "and gives up in plain words" 'plan_fails "couldn'"'"'t reach GitHub: connection reset by peer"'
+rm "$G/flaky"
+touch "$G/signed-out"
+expect "gh signed out is said at once" 'plan_fails "isn'"'"'t signed in to GitHub"'
+rm "$G/signed-out"
 mv .product-kit.json "$TMP/elsewhere.json"
 expect "--config reads a config from elsewhere, before -C moves" \
-  '(cd "$TMP" && "$KIT" --config elsewhere.json -C "$Q" plan check >/dev/null)'
+  '(cd "$TMP" && "$KIT" --config elsewhere.json -C "$Q" plan status | grep -q "1-one.md: \*\*Milestone")'
 mv "$TMP/elsewhere.json" .product-kit.json
 echo '{"repo": "someone/thing"}' >"$TMP/no-plan.json"
 expect "a config with no plan says so" '{ "$KIT" --config "$TMP/no-plan.json" plan check 2>&1 || true; } | grep -q "no \"plan\" section"'
