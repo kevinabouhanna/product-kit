@@ -3,6 +3,7 @@
 // project's CI.
 
 import AppKit
+import AVFoundation
 import ApplicationServices
 import CryptoKit
 import ScreenCaptureKit

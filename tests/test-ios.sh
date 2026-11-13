@@ -82,6 +82,8 @@ expect "videos records the out-of-date one, in English and Arabic" \
 expect "as MP4 videos" '[ "$(head -c 8 "$P/docs/images/tour.mp4" | tail -c 4)" = ftyp ] && [ "$(head -c 8 "$P/docs/images/ar/tour.mp4" | tail -c 4)" = ftyp ]'
 expect "and says it's made from the windows' version now" 'grep -q "\"made\": \"1.0\"" "$P/shots/shots.json"'
 expect "then it's current" 's videos | grep -q "every scripted video is as new as the windows it shows"'
+expect "a poster is a still from the video (#65)" \
+  's poster docs/images/tour.mp4 docs/images/tour-poster.jpg --at 1 | grep -q "poster: docs/images/tour-poster.jpg" && [ "$(sips -g format "$P/docs/images/tour-poster.jpg" | awk "/format/ {print \$2}")" = jpeg ]'
 
 [ "$fails" -eq 0 ] && echo "ios: every test passed" || { echo "ios: $fails failed"; cat "$TMP/build.log" 2>/dev/null | tail -5; }
 exit $((fails > 0))

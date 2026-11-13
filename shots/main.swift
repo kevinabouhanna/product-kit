@@ -2,6 +2,7 @@
 // them together, and `shots-kit vendor` writes them into one file for a project's CI.
 
 import AppKit
+import AVFoundation
 import ApplicationServices
 import CryptoKit
 import ScreenCaptureKit
@@ -87,11 +88,32 @@ struct ShotsKit {
             while let line = readLine(strippingNewline: true) { print(mask(line)) }
             exit(0)
         }
+        // A video of a shot (product-kit#65): `video <shot> --out <file from the site> --seconds N`.
+        var videoArgs: [String] = []
+        var videoOut: String?, videoSeconds = 8.0
+        if let i = args.firstIndex(of: "--out"), i + 1 < args.count {
+            videoOut = args[i + 1]; videoArgs += ["--out", args[i + 1]]; args.removeSubrange(i...(i + 1))
+        }
+        if let i = args.firstIndex(of: "--seconds"), i + 1 < args.count {
+            videoSeconds = Double(args[i + 1]) ?? 8; videoArgs += ["--seconds", args[i + 1]]; args.removeSubrange(i...(i + 1))
+        }
+        if args.first == "poster" {
+            guard args.count >= 3 else { print("usage: shots-kit poster <video> <image> [--at SECONDS]"); exit(2) }
+            let at = args.firstIndex(of: "--at").flatMap { $0 + 1 < args.count ? Double(args[$0 + 1]) : nil } ?? 0.5
+            do {
+                try await poster(of: URL(fileURLWithPath: args[1]), at: at, to: URL(fileURLWithPath: args[2]))
+                print("poster: \(args[2])")
+                exit(0)
+            } catch {
+                print("poster: \(error)")
+                exit(2)
+            }
+        }
         var altSince: String?
         if let i = args.firstIndex(of: "--since"), i + 1 < args.count {
             altSince = args[i + 1]; args.removeSubrange(i...(i + 1))
         }
-        guard let command = args.first, ["check", "update", "tree", "audit", "coverage", "coverage-test", "readme", "record", "alt"].contains(command) else {
+        guard let command = args.first, ["check", "update", "tree", "audit", "coverage", "coverage-test", "readme", "record", "alt", "video"].contains(command) else {
             print("usage: shots-kit check [--look]|update|audit [names…]|tree <name>|record <names…>|coverage|coverage-test|mask|mask-test|alt [names…] [--since REF]|readme [--site DIR] [--repo DIR] [--app APP] [--language CODE] [--vm|--here] [--wait-away MINUTES]|version")
             exit(2)
         }
@@ -193,7 +215,7 @@ struct ShotsKit {
         if InVM.commands.contains(command), !InVM.inside, inVM ?? config.vm.byDefault {
             do {
                 let manifest = try loadManifest(site)
-                exit(InVM.run(args + (compareLooks ? ["--look"] : []) + (only.map { ["--language", $0] } ?? []),
+                exit(InVM.run(args + (compareLooks ? ["--look"] : []) + (only.map { ["--language", $0] } ?? []) + videoArgs,
                               manifest: manifest, site: site, repo: repo, app: app))
             } catch {
                 print("shots-kit: \(error)")
@@ -239,6 +261,27 @@ struct ShotsKit {
                 if let language { print("\n\(language.code), for \(language.page):") }
                 do {
                     let translator = try language.map { try Translator(app: manifest.app, language: $0) }
+                    if command == "video" {
+                        guard let name = names.first, names.count == 1, var shot = manifest.shots.first(where: { $0.name == name }),
+                              let out = videoOut else {
+                            throw Failure("usage: shots-kit video <shot> --out <file, from the site> [--seconds N] [--language CODE]")
+                        }
+                        if let language, let translator { shot = shot.localized(language, translator) }
+                        try mac.hold("recording a window")
+                        try session.launch(shot.open)
+                        let window = try session.window(shot.window)
+                        session.place(window)
+                        try session.bringForward(window)
+                        let url = site.appendingPathComponent(out)
+                        try await session.record(window, to: url, seconds: videoSeconds) {
+                            for spec in shot.click ?? [] {
+                                usleep(900_000)
+                                try session.click(spec, in: window)
+                            }
+                        }
+                        print("video: recorded \(out) (\(Int(videoSeconds)) s)")
+                        continue
+                    }
                     let s = try await run(command, names: names, manifest: manifest, session: session, mac: mac, site: site,
                                           repo: repo, repoAssets: RepoAssets.of(repoAssets, manifest), language: language,
                                           translator: translator)

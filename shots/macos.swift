@@ -2,6 +2,7 @@
 // them together, and `shots-kit vendor` writes them into one file for a project's CI.
 
 import AppKit
+import AVFoundation
 import ApplicationServices
 import CryptoKit
 import ScreenCaptureKit
@@ -252,6 +253,59 @@ struct NeedsAway: Error { let what: String }
 /// Before taking focus or moving the pointer.
 func needAway(_ what: String) throws {
     if !isAway() { throw NeedsAway(what: what) }
+}
+
+// MARK: - Recording a window (product-kit#65)
+
+/// Writes what a ScreenCaptureKit stream shows to an MP4, frame by frame, as they come.
+final class WindowRecording: NSObject, SCStreamOutput, @unchecked Sendable {
+    let writer: AVAssetWriter
+    let input: AVAssetWriterInput
+    private var started = false
+    private var frames = 0
+
+    init(to url: URL, width: Int, height: Int) throws {
+        try? FileManager.default.removeItem(at: url)
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
+        input = AVAssetWriterInput(mediaType: .video, outputSettings: [
+            AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: width, AVVideoHeightKey: height])
+        input.expectsMediaDataInRealTime = true
+        writer.add(input)
+    }
+
+    func stream(_ stream: SCStream, didOutputSampleBuffer buffer: CMSampleBuffer, of type: SCStreamOutputType) {
+        guard type == .screen, buffer.isValid,
+              let info = (CMSampleBufferGetSampleAttachmentsArray(buffer, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]])?.first,
+              let raw = info[.status] as? Int, SCFrameStatus(rawValue: raw) == .complete else { return }
+        if !started {
+            writer.startWriting()
+            writer.startSession(atSourceTime: buffer.presentationTimeStamp)
+            started = true
+        }
+        if input.isReadyForMoreMediaData, input.append(buffer) { frames += 1 }
+    }
+
+    func finish() async throws {
+        guard started, frames > 0 else { throw Failure("the recording caught no frames of the window") }
+        input.markAsFinished()
+        await writer.finishWriting()
+        if writer.status != .completed { throw Failure("the video wasn't written: \(writer.error?.localizedDescription ?? "?")") }
+    }
+}
+
+/// A still from a video, as a JPEG or PNG by its name (product-kit#65): a video's poster.
+func poster(of video: URL, at seconds: Double, to url: URL) async throws {
+    let generator = AVAssetImageGenerator(asset: AVURLAsset(url: video))
+    generator.appliesPreferredTrackTransform = true
+    generator.requestedTimeToleranceBefore = .zero
+    generator.requestedTimeToleranceAfter = .zero
+    let (image, _) = try await generator.image(at: CMTime(seconds: seconds, preferredTimescale: 600))
+    let kind = url.pathExtension.lowercased() == "png" ? "public.png" : "public.jpeg"
+    try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    guard let dest = CGImageDestinationCreateWithURL(url as CFURL, kind as CFString, 1, nil) else { throw Failure("can't write \(url.path)") }
+    CGImageDestinationAddImage(dest, image, [kCGImageDestinationLossyCompressionQuality: 0.88] as CFDictionary)
+    guard CGImageDestinationFinalize(dest) else { throw Failure("can't write \(url.path)") }
 }
 
 // MARK: - Launching
@@ -592,16 +646,47 @@ struct Session {
 
     /// A capture, with where its top left is on screen and its points to
     /// pixels: to place the masks of the look check on it (NetworkMonitor#423).
-    func picture(_ window: AXUIElement, crop: Crop?) async throws -> (image: CGImage, origin: CGPoint, scale: CGFloat) {
+    /// The window as ScreenCaptureKit has it: a window by its frame; a popover by the smallest
+    /// window around it, which is larger for the arrow and the shadow.
+    func capturable(_ window: AXUIElement) async throws -> SCWindow {
         guard let app = running, let f = frame(window) else { throw Failure("no window to capture") }
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         let candidates = content.windows.filter { $0.owningApplication?.processID == app.processIdentifier }
-        // A window by its frame; a popover by the smallest window around it,
-        // which is larger for the arrow and the shadow.
         let exact = candidates.min(by: { distance($0.frame, f) < distance($1.frame, f) }).flatMap { distance($0.frame, f) < 4 ? $0 : nil }
         let around = candidates.filter { $0.frame.insetBy(dx: -1, dy: -1).contains(f) }
             .min(by: { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height })
         guard let target = exact ?? around else { throw Failure("can't find the window on screen") }
+        return target
+    }
+
+    /// A video of the window (product-kit#65): `seconds` of it, recorded with ScreenCaptureKit,
+    /// while `actions` (the shot's clicks) run, written as an H.264 MP4.
+    func record(_ window: AXUIElement, to url: URL, seconds: Double, during actions: () throws -> Void) async throws {
+        let target = try await capturable(window)
+        let width = Int(target.frame.width * 2) & ~1, height = Int(target.frame.height * 2) & ~1
+        let config = SCStreamConfiguration()
+        config.width = width
+        config.height = height
+        config.minimumFrameInterval = CMTime(value: 1, timescale: 30)
+        config.showsCursor = false
+        config.ignoreShadowsSingleWindow = true
+        let recording = try WindowRecording(to: url, width: width, height: height)
+        let stream = SCStream(filter: SCContentFilter(desktopIndependentWindow: target), configuration: config, delegate: nil)
+        try stream.addStreamOutput(recording, type: .screen, sampleHandlerQueue: DispatchQueue(label: "shots-kit.recording"))
+        try await stream.startCapture()
+        let start = Date()
+        do { try actions() } catch {
+            try? await stream.stopCapture()
+            throw error
+        }
+        let left = seconds - Date().timeIntervalSince(start)
+        if left > 0 { try await Task.sleep(nanoseconds: UInt64(left * 1_000_000_000)) }
+        try await stream.stopCapture()
+        try await recording.finish()
+    }
+
+    func picture(_ window: AXUIElement, crop: Crop?) async throws -> (image: CGImage, origin: CGPoint, scale: CGFloat) {
+        let target = try await capturable(window)
         let config = SCStreamConfiguration()
         config.width = Int(target.frame.width * 2)
         config.height = Int(target.frame.height * 2)

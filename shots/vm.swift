@@ -2,6 +2,7 @@
 // them together, and `shots-kit vendor` writes them into one file for a project's CI.
 
 import AppKit
+import AVFoundation
 import ApplicationServices
 import CryptoKit
 import ScreenCaptureKit
@@ -22,7 +23,7 @@ import ScreenCaptureKit
 /// something changed here meanwhile stays.
 enum InVM {
     /// The commands that open the app; the rest read files only, here.
-    static let commands: Set<String> = ["check", "update", "record", "tree", "audit"]
+    static let commands: Set<String> = ["check", "update", "record", "tree", "audit", "video"]
 
     /// This is the run inside the VM.
     static var inside: Bool { ProcessInfo.processInfo.environment["SHOTS_KIT_IN_VM"] == "1" }
