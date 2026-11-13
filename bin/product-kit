@@ -38,6 +38,13 @@ class Tool:
         self.name, self.source, self.section, self.default = name, KIT / source, section, default
         self.version_line = re.compile(version_line, re.M)
 
+    def source_bytes(self) -> bytes:
+        """What a project's copy must be: the tool's file, or shots-kit's files as one (#35)."""
+        listed = self.source.parent / "SOURCES"
+        if self.name == "shots-kit" and listed.exists():
+            return b"".join((self.source.parent / n).read_bytes() for n in listed.read_text().split())
+        return self.source.read_bytes()
+
     def version_of(self, path: pathlib.Path) -> str | None:
         if not path.exists():
             return None
@@ -60,7 +67,7 @@ class Tool:
 TOOLS = [
     Tool("docs-kit", "bin/docs-kit", None, "Scripts/docs-kit", r'^VERSION = "([^"]+)"'),
     Tool("lang-kit", "bin/lang-kit", "lang", "Scripts/lang-kit", r'^VERSION = "([^"]+)"'),
-    Tool("shots-kit", "shots/shots-kit.swift", "shots", "Scripts/shots-kit.swift", r'^let shotsKitVersion = "([^"]+)"'),
+    Tool("shots-kit", "shots/core.swift", "shots", "Scripts/shots-kit.swift", r'^let shotsKitVersion = "([^"]+)"'),
 ]
 
 
@@ -118,7 +125,7 @@ class Project:
     def behind(self, at: pathlib.Path | None = None) -> list[tuple[Tool, pathlib.Path]]:
         out = []
         for tool, path in self.copies(at):
-            same = path.read_bytes() == tool.source.read_bytes()
+            same = path.read_bytes() == tool.source_bytes()
             if tool.name == "shots-kit" and not self.config.get("shots", {}).get("audit"):
                 audit = path.parent / "AccessibilityAudit.swift"
                 same = same and audit.exists() and audit.read_bytes() == (KIT / "shots/AccessibilityAudit.swift").read_bytes()

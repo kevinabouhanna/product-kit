@@ -28,7 +28,7 @@ echo "--- one version"
 V="$("$KIT" version)"
 expect "version is one version" '[[ "$V" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]'
 expect "every tool carries it" \
-  '[ "$(python3 -I "$ROOT/bin/docs-kit" version)" = "$V" ] && [ "$(python3 -I "$ROOT/bin/lang-kit" version)" = "$V" ] && grep -q "^let shotsKitVersion = \"$V\"" "$ROOT/shots/shots-kit.swift"'
+  '[ "$(python3 -I "$ROOT/bin/docs-kit" version)" = "$V" ] && [ "$(python3 -I "$ROOT/bin/lang-kit" version)" = "$V" ] && grep -q "^let shotsKitVersion = \"$V\"" "$ROOT/shots/core.swift"'
 expect "bump takes only a version" 'pk bump 2.x | grep -q "three numbers"'
 
 echo "--- the projects, and their copies"
@@ -81,7 +81,7 @@ pushed="$TMP/pushed"; git clone -q -b product-kit-${V//./-}-7 "$TMP/origins/app.
 expect "it opens a pull request for the project that's behind" 'grep -q "app: https://github.com/me/app/pull/8 (docs-kit 1.5.0 → $V, shots-kit 1.3.0 → $V)" <<<"$out"'
 expect "and leaves the one that's up to date alone" 'grep -q "current: up to date" <<<"$out"'
 expect "the branch it pushed holds this version's copies" \
-  'cmp -s "$pushed/Scripts/docs-kit" "$ROOT/bin/docs-kit" && cmp -s "$pushed/Scripts/site-shots.swift" "$ROOT/shots/shots-kit.swift" && [ -f "$pushed/Scripts/AccessibilityAudit.swift" ]'
+  'cmp -s "$pushed/Scripts/docs-kit" "$ROOT/bin/docs-kit" && "$ROOT/bin/shots-kit" source | cmp -s - "$pushed/Scripts/site-shots.swift" && [ -f "$pushed/Scripts/AccessibilityAudit.swift" ]'
 expect "an app's windows keep what shots-kit masked before 1.4.0, in the config" \
   'python3 -c "import json,sys; s=json.load(open(sys.argv[1]))[\"shots\"]; sys.exit(not (s[\"keep_width\"]==[\"AXMenuBarItem\"] and \"MB\" not in s[\"masks\"][0][\"pattern\"] and \"B/s\" in s[\"masks\"][0][\"pattern\"]))" "$pushed/.product-kit.json"'
 expect "the issue goes under the project's upkeep item, and the pull request closes it" \

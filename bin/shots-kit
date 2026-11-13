@@ -1,12 +1,14 @@
 #!/bin/bash
 #
-# shots-kit: a project's pictures of its macOS app, kept current (product-kit#6, #8).
-# Builds the Swift tool (shots/shots-kit.swift) on first use, with the project's own
-# accessibility rules when it has them (shots.audit in .product-kit.json), keeps the
-# build by its sources, and runs it in the project's checkout.
+# shots-kit: a project's pictures of its app, kept current (product-kit#6, #8, #35).
+# Builds the Swift tool (shots/*.swift, in the order shots/SOURCES lists: a core, and a file
+# per driver) on first use, with the project's own accessibility rules when it has them
+# (shots.audit in .product-kit.json), keeps the build by its sources, and runs it in the
+# project's checkout.
 #
 #   shots-kit check [--look] | update | record | audit | tree <name> | readme | coverage
-#   shots-kit coverage-test | version
+#   shots-kit coverage-test | mask | mask-test | version
+#   shots-kit source               the program as one file, as `vendor` writes it
 #   shots-kit vendor [--check]     copy the source into the project (shots.vendor,
 #                                  Scripts/shots-kit.swift by default), for its CI;
 #                                  with AccessibilityAudit.swift beside it unless the
@@ -18,8 +20,14 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 src="$here/../shots"
 
 case "${1:-help}" in
-  help|-h|--help) sed -n '3,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  help|-h|--help) sed -n '3,17p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
 esac
+
+# The program's files, in order; as one file, they're what a project keeps a copy of.
+sources=()
+while IFS= read -r name; do [[ -n "$name" ]] && sources+=("$src/$name"); done <"$src/SOURCES"
+one_file() { cat "${sources[@]}"; }
+if [[ "$1" == source ]]; then one_file; exit 0; fi
 
 # The project: --repo, or the checkout this runs in.
 repo=""
@@ -46,9 +54,9 @@ if [[ "$1" == vendor ]]; then
   # beside the tool, since it doesn't build without them (#8).
   audit_copy=""
   [[ -z "$(setting audit)" ]] && audit_copy="$(dirname "$target")/AccessibilityAudit.swift"
-  version="$(sed -n 's/^let shotsKitVersion = "\(.*\)"$/\1/p' "$src/shots-kit.swift")"
+  version="$(sed -n 's/^let shotsKitVersion = "\(.*\)"$/\1/p' "${sources[0]}")"
   if [[ "${2:-}" == --check ]]; then
-    if cmp -s "$src/shots-kit.swift" "$target" && { [[ -z "$audit_copy" ]] || cmp -s "$src/AccessibilityAudit.swift" "$audit_copy"; }; then
+    if one_file | cmp -s - "$target" && { [[ -z "$audit_copy" ]] || cmp -s "$src/AccessibilityAudit.swift" "$audit_copy"; }; then
       echo "shots-kit: ${target#"$repo/"} is this copy ($version)"; exit 0
     fi
     theirs="$(sed -n 's/^let shotsKitVersion = "\(.*\)"$/\1/p' "$target" 2>/dev/null || true)"
@@ -60,7 +68,7 @@ if [[ "$1" == vendor ]]; then
     exit 1
   fi
   mkdir -p "$(dirname "$target")"
-  cp "$src/shots-kit.swift" "$target"
+  one_file >"$target"
   [[ -n "$audit_copy" ]] && cp "$src/AccessibilityAudit.swift" "$audit_copy"
   echo "shots-kit: copied $version to ${target#"$repo/"}${audit_copy:+, with ${audit_copy#"$repo/"}}"
   exit 0
@@ -68,12 +76,12 @@ fi
 
 audit="$(setting audit)"
 if [[ -n "$audit" && -f "$repo/$audit" ]]; then audit="$repo/$audit"; else audit="$src/AccessibilityAudit.swift"; fi
-key="$(cat "$src/shots-kit.swift" "$audit" | shasum -a 256 | cut -c1-16)"
+key="$(cat "${sources[@]}" "$audit" | shasum -a 256 | cut -c1-16)"
 cache="$HOME/Library/Caches/product-kit/shots-kit/$key"
 if [[ ! -x "$cache/shots-kit" ]]; then
   mkdir -p "$cache"
   echo "shots-kit: building (once for these sources)…" >&2
-  swiftc -O -parse-as-library "$src/shots-kit.swift" "$audit" -o "$cache/shots-kit.new" >&2
+  swiftc -O -parse-as-library "${sources[@]}" "$audit" -o "$cache/shots-kit.new" >&2
   mv "$cache/shots-kit.new" "$cache/shots-kit"
 fi
 cd "$repo"
