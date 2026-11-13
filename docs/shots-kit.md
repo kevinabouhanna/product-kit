@@ -128,6 +128,20 @@ With no `shots.site` (and no `--site`), `shots/shots.json` is in the project's o
 and its files are the repo's. `coverage` then checks the README's and the docs' assets against
 that one list: `shots.repo_assets` isn't used.
 
+## One list, or two (#36)
+
+Every picture, GIF and video is in **one list** when the site is on the same branch as the
+code: no site (above), or a site in a folder of the checkout (`shots.site: "site"`). Its
+manifest then lists the README's and the docs' files too, each with `"in": "repo"` (paths from
+the checkout). `shots-kit migrate` folds an old `shots.repo_assets` list into it.
+
+**A site on another branch or in another repository** (a `gh-pages` branch, its own repo)
+keeps the list of what's on it there, and the README's and docs' list stays on the code's
+branch (`shots.repo_assets`). Each branch's pull requests must pass the asset check on their
+own, and with one list a new README picture would need a second pull request on the other
+branch. `coverage` reads the two as one, so nothing goes unlisted; `migrate` says so and
+changes nothing.
+
 ## Commands
 
 | Command | Does |
@@ -142,6 +156,7 @@ that one list: `shots.repo_assets` isn't used.
 | `coverage-test` | Where `coverage` looks for media, on made-up pages. |
 | `mask` | Prints each line it reads as a tree would show it: the numbers, dates and the project's own values masked, in every language it shows. Files only, for trying `shots.masks`. |
 | `mask-test` | The masks on made-up labels in English, Chinese, French, German, Arabic and Japanese. |
+| `migrate` | Folds the README's list (`shots.repo_assets`) into the manifest, when the site is on the same branch; says why not otherwise. Files only. |
 | `vendor [--check]` | Copies the tool's source into the project (`shots.vendor`), so its CI can build it without the plugin, with `AccessibilityAudit.swift` beside it unless the project has its own (`shots.audit`). |
 | `version` | |
 
@@ -202,7 +217,7 @@ one of the two VM lanes. One VM run per site at a time.
 | Key | Meaning |
 |---|---|
 | `shots.site` | The site's checkout, from the project's main checkout, so it's the same from any worktree: `../App-site`. Without it (or `--site`), the manifest is the project's own. |
-| `shots.repo_assets` | The README's and the docs' list of their assets (`assets.json`), when there's a site. |
+| `shots.repo_assets` | The README's and the docs' list of their assets (`assets.json`), when the site is on another branch. |
 | `shots.lane` | The app's Mac lane (its bundle id's last part, lowercased). |
 | `shots.launch.background` | Launch arguments that open the app's windows behind the others without activating it, for commands that only read trees: `["-background", "YES"]`. The app has to support them. |
 | `shots.launch.language` | Launch arguments that show the app in a language, `{code}` for its code (`["-AppleLanguages", "({code})"]`). |
@@ -233,7 +248,7 @@ On the site, or in the project's checkout when it has none. NetworkMonitor's (on
 | `render` | Pictures the project draws itself: `build` and `command`, `{out}` for the folder. Its shots have only `name`, `file` and `render`. |
 | `driver` | A program of the project's choosing that opens each screen: `command`, and `build` (#35). `app` and `bundle` are then optional, and a shot needs only `name` (above). |
 | `shots` | One per picture or checked window: `name`, `file` (the picture, from the site's root; none for a window only checked), `open` (launch arguments), `window` (its title, or an element such as `AXPopover`), `click`, `scroll`, `waitFor`, `when` (taken only when that shot's window changed: a costly one), `skipIf`, `ignore`, `data` (regions that are data: `from`, `until`, `skip`, `optional`), `crop`, `areas` (clickable areas on the page: `match`, `element`, `parent`, `pad`, `h`), `always`. |
-| `assets` | Every other image, GIF and video the site uses: `file`, and `shows` (shots) with `made` (the app version), or `none` (why it shows no window), and `stale` (the issue its remake waits on). |
+| `assets` | Every other image, GIF and video the site uses: `file`, and `shows` (shots) with `made` (the app version), or `none` (why it shows no window), and `stale` (the issue its remake waits on). `in`: `repo` for the README's and the docs' files, when the site is on the same branch. `how` it's made: `taken`, `drawn`, `recorded`, `built` or `hand` (the default for one that `shows` windows). |
 | `languages` | Other languages the site has a page in: `code`, `page`, `assets` (its pictures' folder), `specs` (labels the app's table can't translate). Each shot is taken again in each. |
 
 An element is written `Role:label`, `Role:~part of a label` or `Outer>Inner`.

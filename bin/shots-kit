@@ -9,6 +9,8 @@
 #   shots-kit check [--look] | update | record | audit | tree <name> | readme | coverage
 #   shots-kit coverage-test | mask | mask-test | version
 #   shots-kit source               the program as one file, as `vendor` writes it
+#   shots-kit migrate              folds the README's list (shots.repo_assets) into the
+#                                  manifest, when the site is on the same branch
 #   shots-kit vendor [--check]     copy the source into the project (shots.vendor,
 #                                  Scripts/shots-kit.swift by default), for its CI;
 #                                  with AccessibilityAudit.swift beside it unless the
@@ -20,7 +22,7 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 src="$here/../shots"
 
 case "${1:-help}" in
-  help|-h|--help) sed -n '3,17p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  help|-h|--help) sed -n '3,19p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
 esac
 
 # The program's files, in order; as one file, they're what a project keeps a copy of.
@@ -47,6 +49,10 @@ setting() {
 v = json.load(open(sys.argv[1])).get("shots", {}).get(sys.argv[2])
 print(v if isinstance(v, str) else "")' "$repo/.product-kit.json" "$1"
 }
+
+# One list where the site is on the same branch (product-kit#36): the README's list folded
+# into the manifest.
+if [[ "$1" == migrate ]]; then exec python3 -I "$src/migrate.py" "$repo"; fi
 
 if [[ "$1" == vendor ]]; then
   target="$(setting vendor)"; target="$repo/${target:-Scripts/shots-kit.swift}"

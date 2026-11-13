@@ -75,7 +75,7 @@ import ApplicationServices
 import CryptoKit
 import ScreenCaptureKit
 
-let shotsKitVersion = "2.1.0"
+let shotsKitVersion = "2.2.0"
 
 // MARK: - Config
 
@@ -199,6 +199,8 @@ struct Manifest: Decodable {
     /// A program that opens each screen and says what it shows (product-kit#35): an
     /// iPhone app in the simulator, a web page. `app` and `bundle` are then optional.
     var driver: DriverConfig?
+    /// The README's and the docs' files in `assets` (`"in": "repo"`), apart (product-kit#36).
+    var repoListed: [HandMade] = []
 
     enum CodingKeys: String, CodingKey { case app, bundle, shots, assets, languages, render, driver }
 
@@ -235,7 +237,13 @@ func loadManifest(_ site: URL) throws -> Manifest {
             ? "no shots/shots.json: put it in the project's checkout, or say where the site is (shots.site in .product-kit.json, or --site)"
             : "no shots/shots.json in \(site.path)")
     }
-    let manifest = try JSONDecoder().decode(Manifest.self, from: Data(contentsOf: file))
+    var manifest = try JSONDecoder().decode(Manifest.self, from: Data(contentsOf: file))
+    // The README's and the docs' files it lists (`"in": "repo"`) are the README's list,
+    // when the manifest is on a site; with no site they're in the same checkout anyway.
+    if !manifestInRepo, let all = manifest.assets {
+        manifest.repoListed = all.filter { $0.place == "repo" }
+        manifest.assets = all.filter { $0.place != "repo" }
+    }
     masks = try Masks(languages: ["en"] + config.languages + (manifest.languages ?? []).map(\.code), project: config.masks)
     return manifest
 }
@@ -333,6 +341,17 @@ struct HandMade: Decodable {
     /// and can't be remade yet: the check names it without failing. It fails
     /// again once the asset is as new as its windows, until this comes out.
     var stale: String?
+    /// `repo`: a file of the README's or the docs', in the project's checkout, listed in a
+    /// manifest that's on the site, when the site is on the same branch (product-kit#36).
+    var place: String?
+    /// How it's made: `taken` (a driver's picture), `drawn` (by the app), `recorded`,
+    /// `built` (a video made from the pictures), or `hand`, the default for one that `shows`
+    /// windows (product-kit#36). Scripted videos and store pictures go by it.
+    var how: String?
+
+    static let hows: Set<String> = ["taken", "drawn", "recorded", "built", "hand"]
+
+    enum CodingKeys: String, CodingKey { case file, shows, none, copy, made, stale, place = "in", how }
 }
 
 /// The app version each window's record was taken from (NetworkMonitor#421), in
@@ -382,6 +401,20 @@ enum Versions {
 /// `main`, listed the same way.
 struct RepoAssets: Decodable {
     var assets: [HandMade]
+
+    /// The README's and the docs' list: `shots.repo_assets`'s file, and the manifest's
+    /// entries for them (`"in": "repo"`, product-kit#36), as one.
+    static func of(_ file: RepoAssets?, _ manifest: Manifest) -> RepoAssets? {
+        if manifest.repoListed.isEmpty { return file }
+        return RepoAssets(assets: (file?.assets ?? []) + manifest.repoListed)
+    }
+}
+
+/// What the README's list is called in a report: its file, or the manifest's entries.
+func repoListName(_ repo: URL, _ manifest: Manifest) -> String {
+    if manifest.repoListed.isEmpty { return repoAssetsPath }
+    return FileManager.default.fileExists(atPath: repo.appendingPathComponent(repoAssetsPath).path)
+        ? repoAssetsPath : "shots/shots.json (\"in\": \"repo\")"
 }
 
 /// Where the repo's list lives, relative to its checkout.
@@ -1057,6 +1090,10 @@ enum Coverage {
                 if !seen.insert(file).inserted { problems.append("\(file) is listed twice in \(listName)") }
                 if taken.contains(file) { problems.append("\(file) is a shot's picture; take it out of \(listName)'s assets") }
                 let shows = asset.shows ?? []
+                if let how = asset.how, !HandMade.hows.contains(how) {
+                    problems.append("\(file) in \(listName) says it's made \"\(how)\": that's one of "
+                                    + HandMade.hows.sorted().joined(separator: ", "))
+                }
                 if asset.copy == nil, shows.isEmpty == (asset.none == nil) {
                     problems.append("\(file) in \(listName) needs either `shows` (the windows it shows) or `none` (why it shows none), not both")
                 }
@@ -1135,7 +1172,7 @@ enum Coverage {
                     }
                 }
             }
-            checkList(repoAssets?.assets ?? [], root: repo, listName: repoAssetsPath, uses: uses, taken: copies)
+            checkList(repoAssets?.assets ?? [], root: repo, listName: repoListName(repo, manifest), uses: uses, taken: copies)
             summary += " and \(uses.count) in the README and docs"
         }
         return (problems, onMain, summary, stale)

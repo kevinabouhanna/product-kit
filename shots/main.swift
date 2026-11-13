@@ -127,7 +127,7 @@ struct ShotsKit {
                 if !manifestInRepo, repoAssets == nil, FileManager.default.fileExists(atPath: repo.appendingPathComponent(repoAssetsPath).path) {
                     throw Failure("\(repoAssetsPath) doesn't read as a list of assets")
                 }
-                let found = try Coverage.problems(manifest: manifest, site: site, repoAssets: repoAssets, repo: repo)
+                let found = try Coverage.problems(manifest: manifest, site: site, repoAssets: RepoAssets.of(repoAssets, manifest), repo: repo)
                 if found.problems.isEmpty {
                     print("coverage: \(found.summary), all accounted for")
                 } else {
@@ -156,7 +156,8 @@ struct ShotsKit {
                 let languages: [Language?] = [nil] + (manifest.languages ?? []).map { $0 }
                 var copied: [String] = []
                 for language in languages where only == nil || only == (language?.code ?? "en") {
-                    copied += try copyToRepo(manifest: manifest, site: site, repo: repo, repoAssets: repoAssets, language: language)
+                    copied += try copyToRepo(manifest: manifest, site: site, repo: repo, repoAssets: RepoAssets.of(repoAssets, manifest),
+                                             language: language)
                 }
                 print(copied.isEmpty ? "readme: the README's pictures are the site's already"
                                      : "readme: copied the site's pictures to " + copied.joined(separator: ", "))
@@ -173,7 +174,7 @@ struct ShotsKit {
         // A driver of the project's choosing: the screens it opens, the core does the rest (product-kit#35).
         if let manifest = try? loadManifest(site), let driver = manifest.driver {
             exit(Commanded.run(command, names: names, manifest: manifest, driver: driver, site: site, repo: repo,
-                               repoAssets: repoAssets, only: only))
+                               repoAssets: RepoAssets.of(repoAssets, manifest), only: only))
         }
         // In a VM: the app, the site and the project go in, what changed comes back.
         if InVM.commands.contains(command), !InVM.inside, inVM ?? config.vm.byDefault {
@@ -226,7 +227,8 @@ struct ShotsKit {
                 do {
                     let translator = try language.map { try Translator(app: manifest.app, language: $0) }
                     let s = try await run(command, names: names, manifest: manifest, session: session, mac: mac, site: site,
-                                          repo: repo, repoAssets: repoAssets, language: language, translator: translator)
+                                          repo: repo, repoAssets: RepoAssets.of(repoAssets, manifest), language: language,
+                                          translator: translator)
                     status = max(status, s)
                     if let missing = translator?.missing, !missing.isEmpty {
                         print("  kept in English, as the app's \(language!.code) table doesn't have them "
