@@ -7,7 +7,6 @@ Each phase is a milestone on GitHub and a page here; each plan is an issue, in t
 
 | Order | Plan | Phase |
 |---|---|---|
-| 12 | #42 product-kit init: a new Mac or iPhone project set up in one command | [Phase 2: Any Mac or iPhone project](02-any-mac-or-iphone-project.md) |
 | 13 | #43 iPhone and iPad pictures, from the simulator, out of sight | [Phase 2: Any Mac or iPhone project](02-any-mac-or-iphone-project.md) |
 
 ## Later

@@ -58,7 +58,7 @@ def shell_code(path: pathlib.Path) -> list[tuple[int, str]]:
 
 def main() -> int:
     found = []
-    for path in sorted((ROOT / "bin").iterdir()) + sorted((ROOT / "shots").glob("*.swift")):
+    for path in sorted((ROOT / "bin").iterdir()) + sorted((ROOT / "shots").glob("*.swift")) + sorted((ROOT / "drivers").iterdir()):
         head = path.read_text(encoding="utf-8").split("\n", 1)[0]
         reader = swift_code if path.suffix == ".swift" else python_code if "python" in head else shell_code
         for n, line in reader(path):
