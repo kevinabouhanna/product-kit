@@ -310,5 +310,29 @@ expect "alt gives each picture's change and its alt text in every language" \
   'grep -q "+ *AXButton title=\"Share\"" <<<"$out" && grep -q "README.md: \"The Home window, with a Share button\"" <<<"$out" && grep -q "README.fr.md: \"La fenêtre Accueil\"" <<<"$out"'
 expect "and only that picture's" '! grep -q "Settings" <<<"$out"'
 
+echo "--- videos made by script (#44)"
+VID="$TMP/vid"; mkdir -p "$VID/shots/trees" "$VID/assets"
+git -C "$VID" init -q
+echo '{"repo": "me/vid"}' >"$VID/.product-kit.json"
+cat >"$VID/shots/shots.json" <<'EOF'
+{"app": "/Applications/Vid.app", "bundle": "me.Vid",
+ "languages": [{"code": "fr", "page": "fr/index.html", "assets": "assets/fr/"}],
+ "shots": [{"name": "home", "file": "assets/home.png", "open": [], "window": "Home"}],
+ "assets": [
+  {"file": "assets/tour.mp4", "shows": ["home"], "made": "1.0", "how": "built", "every_language": true,
+   "build": {"command": ["sh", "-c", "printf 'a tour in %s' \"$1\" > \"$0\"", "{out}", "{code}"]}},
+  {"file": "assets/brag.mp4", "shows": ["home"], "made": "1.0"}]}
+EOF
+echo '{"home.txt": "1.2"}' >"$VID/shots/trees/versions.json"; : >"$VID/shots/trees/home.txt"
+v() { (cd "$VID" && "$KIT" videos "$@" 2>&1) || true; }
+expect "--dry-run says which it would make, and makes none" 'v --dry-run | grep -q "would make assets/fr/tour.mp4 (built, fr)" && [ ! -f "$VID/assets/tour.mp4" ]'
+out="$(v)"
+expect "a built video out of date is made again, in every language" \
+  'grep -q "made 2: assets/tour.mp4, assets/fr/tour.mp4" <<<"$out" && [ "$(cat "$VID/assets/fr/tour.mp4")" = "a tour in fr" ] && [ "$(cat "$VID/assets/tour.mp4")" = "a tour in en" ]'
+expect "its made is the windows' version now" 'python3 -c "import json,sys; a=json.load(open(sys.argv[1]))[\"assets\"]; sys.exit(a[0][\"made\"] != \"1.2\" or a[1][\"made\"] != \"1.0\")" "$VID/shots/shots.json"'
+expect "a video made by hand is named, never remade" 'grep -q "assets/brag.mp4 (made from 1.0, its windows from 1.2)" <<<"$out" && [ ! -f "$VID/assets/brag.mp4" ]'
+expect "a recorded one with no driver says what it needs" \
+  'python3 -c "import json,sys; m=json.load(open(sys.argv[1])); m[\"assets\"][0].update(how=\"recorded\", made=\"1.0\", record={\"shot\": \"home\"}); json.dump(m, open(sys.argv[1], \"w\"))" "$VID/shots/shots.json" && v | grep -q "needs the manifest.s .driver."'
+
 [ "$fails" -eq 0 ] && echo "shots-kit: every test passed" || echo "shots-kit: $fails failed"
 exit $((fails > 0))

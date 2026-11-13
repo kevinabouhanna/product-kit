@@ -65,5 +65,23 @@ expect "update retakes only the picture whose interface changed" \
   'grep -q "retook docs/images/home.png" <<<"$out" && ! grep -q "retook docs/images/home-ipad.png" <<<"$out" && [ "$(shasum "$P/docs/images/home-ipad.png")" = "$before" ]'
 expect "no simulator showed a window: none was opened by Simulator" '! pgrep -x Simulator >/dev/null || true'
 
+echo "--- a video recorded by script, in every language (#44)"
+python3 - "$P/shots/shots.json" <<'EOF'
+import json, sys
+m = json.load(open(sys.argv[1]))
+m["app"] = "build/ShotsTest.app"
+m["assets"] = [{"file": "docs/images/tour.mp4", "shows": ["home"], "made": "0.9", "how": "recorded",
+                "record": {"shot": "home", "seconds": 4}, "every_language": True}]
+json.dump(m, open(sys.argv[1], "w"), indent=2)
+EOF
+s update home --language en >/dev/null
+expect "the window's record carries the app's version" 'grep -q "\"home.txt\" : \"1.0\"" "$P/shots/trees/versions.json"'
+out="$(s videos)"
+expect "videos records the out-of-date one, in English and Arabic" \
+  'grep -q "made 2: docs/images/tour.mp4, docs/images/ar/tour.mp4" <<<"$out"'
+expect "as MP4 videos" '[ "$(head -c 8 "$P/docs/images/tour.mp4" | tail -c 4)" = ftyp ] && [ "$(head -c 8 "$P/docs/images/ar/tour.mp4" | tail -c 4)" = ftyp ]'
+expect "and says it's made from the windows' version now" 'grep -q "\"made\": \"1.0\"" "$P/shots/shots.json"'
+expect "then it's current" 's videos | grep -q "every scripted video is as new as the windows it shows"'
+
 [ "$fails" -eq 0 ] && echo "ios: every test passed" || { echo "ios: $fails failed"; cat "$TMP/build.log" 2>/dev/null | tail -5; }
 exit $((fails > 0))

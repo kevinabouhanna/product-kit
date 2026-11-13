@@ -1,6 +1,6 @@
 # Phase 2: Any Mac or iPhone project
 
-**Milestone:** Phase 2: Any Mac or iPhone project · **Status:** Next
+**Milestone:** Phase 2: Any Mac or iPhone project · **Status:** Later
 
 **Goal:** tools that work for any Mac or iPhone project, a new project set up in one command,
 and everything it shows people (docs, pictures, videos, languages, store pages) kept current by
@@ -83,6 +83,7 @@ Next: cheaper upkeep, the kickstart, iPhone.
 Later: videos, store pages, web views, the proof.
 
 - #44 Videos made by script, in every language.
+- #65 Recorded videos of a Mac app, and NetworkMonitor's live.mp4 by script.
 - #45 App Store pages and release notes, in every language.
 - #46 Apps built on web views (home-control), and the website itself checked.
 - #47 Prove it: a new project from nothing, and every project current.

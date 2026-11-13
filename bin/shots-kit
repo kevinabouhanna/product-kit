@@ -11,6 +11,9 @@
 #   shots-kit source               the program as one file, as `vendor` writes it
 #   shots-kit migrate              folds the README's list (shots.repo_assets) into the
 #                                  manifest, when the site is on the same branch
+#   shots-kit videos [names] [--all] [--dry-run]
+#                                  remakes the videos made by script (recorded or built)
+#                                  whose windows changed, in every language; names the rest
 #   shots-kit vendor [--check]     copy the source into the project (shots.vendor,
 #                                  Scripts/shots-kit.swift by default), for its CI;
 #                                  with AccessibilityAudit.swift beside it unless the
@@ -22,7 +25,7 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 src="$here/../shots"
 
 case "${1:-help}" in
-  help|-h|--help) sed -n '3,19p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  help|-h|--help) sed -n '3,22p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
 esac
 
 # The program's files, in order; as one file, they're what a project keeps a copy of.
@@ -53,6 +56,24 @@ print(v if isinstance(v, str) else "")' "$repo/.product-kit.json" "$1"
 # One list where the site is on the same branch (product-kit#36): the README's list folded
 # into the manifest.
 if [[ "$1" == migrate ]]; then exec python3 -I "$src/migrate.py" "$repo"; fi
+
+# Videos made by script, remade when a window they show changed (product-kit#44).
+if [[ "$1" == videos ]]; then
+  site_dir="" rest=() skip=0
+  for ((i = 1; i < ${#args[@]}; i++)); do
+    if ((skip)); then skip=0; continue; fi
+    case "${args[$i]}" in
+      --site) site_dir="${args[$((i + 1))]}"; skip=1 ;;
+      --repo) skip=1 ;;
+      *) rest+=("${args[$i]}") ;;
+    esac
+  done
+  if [[ -z "$site_dir" && -n "$(setting site)" ]]; then
+    common="$(git -C "$repo" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+    site_dir="$(cd "${common:+$(dirname "$common")}" 2>/dev/null && cd "$(setting site)" 2>/dev/null && pwd || true)"
+  fi
+  exec python3 -I "$src/videos.py" "$repo" "$site_dir" ${rest[@]+"${rest[@]}"}
+fi
 
 if [[ "$1" == vendor ]]; then
   target="$(setting vendor)"; target="$repo/${target:-Scripts/shots-kit.swift}"
