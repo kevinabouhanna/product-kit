@@ -7,7 +7,6 @@ Each phase is a milestone on GitHub and a page here; each plan is an issue, in t
 
 | Order | Plan | Phase |
 |---|---|---|
-| 3 | #33 Update every project's copy of the tools in one go, with one version for the whole kit | [Phase 2: Any Mac or iPhone project](02-any-mac-or-iphone-project.md) |
 | 4 | #34 One small skill, so every session in every project costs fewer tokens | [Phase 2: Any Mac or iPhone project](02-any-mac-or-iphone-project.md) |
 | 5 | #35 shots-kit: one core, and a driver for each kind of app | [Phase 2: Any Mac or iPhone project](02-any-mac-or-iphone-project.md) |
 | 6 | #36 One list of every picture, GIF and video, wherever it's shown | [Phase 2: Any Mac or iPhone project](02-any-mac-or-iphone-project.md) |

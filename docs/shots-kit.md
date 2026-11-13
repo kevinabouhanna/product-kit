@@ -36,6 +36,11 @@ Videos and staged pictures aren't taken by the tool: they're listed with the win
 and the app version they were **made** from, and **flagged** for remaking by hand when one of
 those windows changes.
 
+**Alt text** describes the interface, not its numbers, so a retake never makes it wrong. When a
+picture is retaken because its interface changed, rewrite its alt text, in every language, from
+the diff `check` or `update` prints. A picture reported as **not taken** (the Mac was in use)
+holds nothing up: a later run takes it, and nobody is asked to step away.
+
 ## Pictures the project draws itself
 
 Some apps can draw their own windows into image files: a debug command that renders a view

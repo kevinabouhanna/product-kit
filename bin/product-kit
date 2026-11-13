@@ -178,7 +178,7 @@ def gh(*args: str, cwd: pathlib.Path | None = None) -> str:
         r = subprocess.run(gh_command() + list(args), capture_output=True, text=True, cwd=cwd)
         if r.returncode == 0:
             return r.stdout
-        if attempt < 3 and re.search(r"timeout|connection reset|EOF|502|503", r.stderr):
+        if attempt < 3 and re.search(r"timeout|timed out|connection reset|EOF|502|503", r.stderr):
             continue
         raise RuntimeError(f"gh {' '.join(args[:2])}: {r.stderr.strip() or r.stdout.strip()}")
     return ""
