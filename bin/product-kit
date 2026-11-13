@@ -20,7 +20,7 @@
                               branch, the copies, a pull request, in each project that's behind
   product-kit doctor [--json] what the project shows people that product-kit can't account for
                               yet: text, pictures, languages, copies, its own checks
-  product-kit status [--release] [--json] [--base REF]
+  product-kit status [--release] [--json] [--base REF] [--offline]
                               what's out of date, across all of it: each with the command that
                               fixes it, or the words Claude writes, or what only Kevin can do
   product-kit facts [--write] [--site DIR] [--json]
@@ -543,7 +543,7 @@ def first_lines(text: str, n: int = 2) -> str:
     return " ".join(lines[:n])[:300]
 
 
-def status_items(root: pathlib.Path, base: str, release: bool) -> list[dict]:
+def status_items(root: pathlib.Path, base: str, release: bool, offline: bool = False) -> list[dict]:
     """Everything out of date, each with who does it: `run` (a command does it), `claude` (words
     to write), `kevin` (only a person can); and whether it fails (a check that doesn't pass)."""
     items: list[dict] = []
@@ -562,7 +562,7 @@ def status_items(root: pathlib.Path, base: str, release: bool) -> list[dict]:
 
     if config_file:
         # The plan and GitHub.
-        if "plan" in config:
+        if "plan" in config and not offline:
             if subprocess.run(gh_command() + ["auth", "status"], capture_output=True).returncode != 0:
                 add("the plan can't be checked: gh isn't signed in", "`gh auth login`", "kevin", False)
             else:
@@ -628,7 +628,7 @@ def status(args: list[str]) -> int:
     root = pathlib.Path(args[args.index("--repo") + 1]).resolve() if "--repo" in args else checkout_root()
     base = args[args.index("--base") + 1] if "--base" in args and args.index("--base") + 1 < len(args) \
         else os.environ.get("PRODUCT_KIT_BASE", "origin/main")
-    items = status_items(root, base, "--release" in args)
+    items = status_items(root, base, "--release" in args, "--offline" in args)
     if "--json" in args:
         print(json.dumps(items, indent=2, ensure_ascii=False))
     elif not items:
@@ -995,7 +995,8 @@ issue, and run `docs-kit plan sync`.
         write(f"{folder}/index.html", f"""<!doctype html>
 <html lang="{languages[0]}">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{name}</title></head>
+<title>{name}</title>
+<style>body {{ max-width: 960px; margin: 0 auto; padding: 24px 16px; }} img, video {{ max-width: 100%; height: auto; }}</style></head>
 <body>
 <h1>{name}</h1>
 <p><!-- product-kit: pitch -->{pitch}<!-- /product-kit --></p>

@@ -59,6 +59,24 @@ The phase issue is #30, where this was planned.
    Apple is thought about once there's something to upload.
 4. **Translation drafts by a cheaper model**: measure first, then decide.
 
+## What shipped (2026-11-13)
+
+- **Generic**: dates masked in every language, a project's own values in its config (#32);
+  shots-kit a core with a driver per kind of app (#35); one list of pictures where the site is on
+  the code's branch (#36); extensions and `product-kit doctor` for what a project needs that
+  product-kit doesn't know, and `product-kit gap` (#37).
+- **Kept current by scripts**: `product-kit status` (#38); small packets for Claude to translate,
+  document and write alt text from, measured at 98–99% fewer tokens than reading the files
+  (#39); the facts written once (#40); Apple's other text and right to left (#41).
+- **Kickstart**: `product-kit init` (#42), run by shared-mac's `/isolate-project`; one version
+  and `product-kit vendor --all` for every project's copies (#33); one short skill (#34).
+- **Mac and iPhone**: iPhone and iPad pictures from the simulator, out of sight (#43); videos made
+  by script, recorded or built, in every language (#44), a Mac app's recorded too (#65); release
+  notes and App Store pages in every language (#45); web views and the website checked (#46).
+- **Proved** (#47): a new Mac app from nothing to every check passing in one run
+  (`tests/test-prove.sh`); NetworkMonitor, claude-profiles-mac and home-control on the current
+  kit, what's left in each with its issue.
+
 ## The items
 
 Now: make it generic.
