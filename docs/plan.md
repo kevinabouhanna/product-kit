@@ -48,9 +48,10 @@ or not.
 |---|---|
 | `docs-kit plan init [--dry-run]` | Sets a new project up, and is safe to run again: the board's fields (Level, Order, Horizon, and Start and Target when named), a milestone for each page and each page's Milestone line, the labels, the root issue, a phase issue per phase, and three views; then `sync`. |
 | `docs-kit plan sync [--dry-run]` | Makes GitHub follow the tree, and the generated files follow GitHub: see below. Prints every change in plain words; `--dry-run` only prints them. |
-| `docs-kit plan check` | Fails when anything `sync` would change, or anything it can't (below). One line when all is well (and one more when ideas are waiting, which never fails it). For CI. |
-| `docs-kit plan ideas [--json]` | The ideas waiting in the board's Ideas view, oldest first: title, note, when and by whom, item id. [Ideas](#ideas). |
-| `docs-kit plan ideas --take <item> --phase "<milestone>" …` | Takes one idea into the plan as an issue, with its spec. [Ideas](#ideas). |
+| `docs-kit plan check` | Fails when anything `sync` would change, or anything it can't (below). One line when all is well (and one more when entries are waiting in the Inbox, which never fails it). For CI. |
+| `docs-kit plan inbox [--json]` | What's waiting in the board's Inbox, oldest first: title, Kind (or "kind not set"), note, when and by whom, item id. `plan ideas` is the same. [The Inbox](#the-inbox). |
+| `docs-kit plan inbox --take <item> --phase "<milestone>" …` | Takes one entry into the plan as an issue, with its spec. [The Inbox](#the-inbox). |
+| `docs-kit plan set <issue> [Field=value …] [--blocked-by N …]` | Moves an issue in the plan (its Order, say) or records what it waits for, then syncs. |
 | `docs-kit plan index [--check]` | Writes the index (`sync` does too), or says whether it's up to date. |
 | `docs-kit plan status [--write]` | Each page's Milestone and Status line as GitHub has it; `--write` puts it on the pages (and adds the line where a page's title is its milestone's). |
 
@@ -96,7 +97,7 @@ Status. It reads GitHub with `gh` (signed in), 100 issues at a time, and writes 
 | **Now · Next · Later** | A board of the open items, a column per Horizon, in Order. |
 | **Roadmap** | A timeline of the open phases and items, grouped by milestone, in Order. |
 | **In order** | A table of the open items and steps, grouped by Horizon, in Order. |
-| **Ideas** | A table of the board's drafts: the owner's inbox (made when it's missing, never changed). |
+| **Inbox** | A table of the board's drafts, with their Kind: the owner's inbox (made when it's missing; an "Ideas" view from before is renamed; never otherwise changed). |
 
 A filter put right keeps the view's layout.
 
@@ -111,36 +112,67 @@ Order, then the milestone's due date, then number) and a Done line of the finish
 index keeps the text above its first `## ` heading; neither has a date, so each changes only
 when GitHub does.
 
-## Ideas
+## The Inbox
 
-The owner has ideas between sessions. They go in the board's **Ideas** view, by hand, with no
-session needed: **+ Add item** at the bottom of the table, a title, Enter. That makes a *draft*
-on the board: no issue yet, nothing in the plan, nothing `plan check` fails on. Clicking the
-draft opens it, to add a note (what it's for, an example, a link).
+Everything the owner wants to tell the project between sessions goes in the board's **Inbox**
+view, by hand, with no session needed: a bug, a feature, an idea, something to research. It's
+"every human input": an entry is a *draft* on the board, no issue yet, nothing in the plan,
+nothing `plan check` fails on (it only says how many are waiting).
 
-When the owner says **"scan the ideas"** (or "look at my ideas", "take the ideas into the
-plan"), the session:
+**Adding an entry:** **+ Add item** at the bottom of the Inbox table, a title, Enter. Then,
+optionally: the **Kind** cell (Bug, Feature, Idea or Research), and the title clicked open to
+add a note (what happened or what it's for, an example, a link). Kind can be left empty: the
+session works it out.
 
-1. runs `docs-kit plan ideas` (oldest first, with each note and item id);
-2. writes a spec for each, in plain words: **Why** (with the owner's note quoted), **What**,
-   **Done when**. It asks only where the intent is genuinely unclear;
-3. decides each one's place: its phase (milestone), and either a Horizon and Order (a new item)
-   or the item it's a step of;
-4. takes each in:
+| Kind | Is |
+|---|---|
+| **Bug** | Something broken or wrong |
+| **Feature** | Something new the app should do |
+| **Idea** | A thought to explore, not decided yet |
+| **Research** | Something to find out before deciding |
+
+### "Scan the inbox"
+
+When the owner says **"scan the inbox"** (or "scan the ideas", "look at what I added"), the
+session:
+
+1. runs `docs-kit plan inbox` (oldest first, with each Kind, note and item id) and works out the
+   Kind of any entry without one;
+2. handles each by its kind:
+   - **Bug:** reads the app's logs first, quotes the lines that explain it in the issue, and
+     places it by severity: a bug that breaks daily use goes ahead of features (Now, early in
+     the Order);
+   - **Feature:** a spec, in plain words: **Why** (the owner's words quoted), **What**, **Done
+     when**;
+   - **Idea** or **Research:** a research or decision issue, not a build: what to find out, and
+     how the decision will be made;
+3. fits every entry into the plan in the most logical order:
+   - **where it belongs:** its phase, and a step of an existing item when it is one
+     (`--parent`);
+   - **what it depends on:** recorded with GitHub's issue dependencies ("blocked by":
+     `--blocked-by N`, or `docs-kit plan set <issue> --blocked-by N` for one already in the
+     plan);
+   - **what moves:** when the new entry should come first, the others' Order changes too
+     (`docs-kit plan set <issue> Order=<N>`);
+4. asks the owner only where the intent is genuinely unclear;
+5. takes each in:
 
    ```
-   docs-kit plan ideas --take <item id> --phase "<milestone>" --horizon <Now|Next|Later> --order <N>      [--set Track=<value>] --body-file <spec.md> [--title "<clearer title>"]
-   docs-kit plan ideas --take <item id> --phase "<milestone>" --parent <item number> --body-file <spec.md>
+   docs-kit plan inbox --take <item id> --phase "<milestone>" --horizon <Now|Next|Later> --order <N> \
+     [--kind <Kind>] [--blocked-by <N>] [--set Track=<value>] --body-file <spec.md> [--title "<clearer title>"]
+   docs-kit plan inbox --take <item id> --phase "<milestone>" --parent <item number> --body-file <spec.md>
    ```
 
-   The draft becomes an issue in the repository (it stays on the board, the same card), with
-   the spec as its description, under its phase issue (or the item), in the milestone, with its
-   values; then `sync` runs;
-5. says each new item on its phase's page, runs `docs-kit plan check`, and tells the owner where
-   each idea went (its number, phase, horizon and place).
+   The draft becomes an issue in the repository (the same card on the board, its Kind kept;
+   a Bug also gets the repository's `bug` label, where there is one), with the spec as its
+   description, under its phase issue (or the item), in the milestone, with its values; then
+   `sync` runs;
+6. says each new item on its phase's page, runs `docs-kit plan check`, and tells the owner where
+   each entry went (its number, kind, phase, horizon and place) and what moved.
 
-`--set Field=value` sets any field of the board (a Track, a date); `--order` takes a decimal to
-slot one between two.
+`--set Field=value` sets any field of the board; `--order` takes a decimal to slot one between
+two. The view was called Ideas before; `plan init` and `plan sync` rename it in place, keeping
+its layout and filter, and make the Kind field and show it there.
 
 ## Changing the plan
 
@@ -178,7 +210,7 @@ to `.product-kit.json`, run `docs-kit plan init`, and put `docs-kit plan check` 
 | `intro` | Text to open the root issue with instead. |
 | `title` | The root issue's title (`The plan: <name>`). |
 | `project` | The project board: its `owner` (a user or an organization; the repository's owner if left out) and `number`. |
-| `fields` | The board's field names, where they aren't `Order`, `Horizon`, `Level` and `Status`. `start` and `target` are used only when named. |
+| `fields` | The board's field names, where they aren't `Order`, `Horizon`, `Level`, `Status` and `Kind`. `start` and `target` are used only when named. |
 | `inherit` | More fields a step copies from its item. |
 | `labels` | `{"plan": "plan", "phase": "phase"}`: the labels, if not these. |
 | `done` | The Status for closed issues (`Done`). |
