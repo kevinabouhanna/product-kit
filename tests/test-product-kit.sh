@@ -130,6 +130,18 @@ expect "--json says the same for scripts" 'json="$(cd "$DOC" && python3 -I "$KIT
 CLEAN="$TMP/clean"; mkdir -p "$CLEAN"; git -C "$CLEAN" init -q
 echo '{"repo": "me/clean", "plan": {"pages": "docs/phases"}}' >"$CLEAN/.product-kit.json"
 expect "a project with nothing unaccounted for says so in a line" '(cd "$CLEAN" && python3 -I "$KIT" doctor) | grep -q "doctor: clean: nothing unaccounted for"'
+python3 - "$DOC/.product-kit.json" <<'EOF'
+import json, sys
+c = json.load(open(sys.argv[1]))
+c["lang"]["more"] = [{"format": "strings", "path": "Resources/{code}.lproj/InfoPlist.strings"}]
+c["languages"]["ar"] = {"name": "العربية"}
+json.dump(c, open(sys.argv[1], "w"))
+EOF
+mkdir -p "$DOC/Resources/ar.lproj"; : >"$DOC/Resources/ar.lproj/Localizable.strings"; : >"$DOC/Resources/ar.lproj/InfoPlist.strings"
+echo "# Doc" >"$DOC/README.ar.md"
+out="$(cd "$DOC" && python3 -I "$KIT" doctor 2>&1)"
+expect "tables lang.more names are checked, so not listed (#41)" '! grep -q "InfoPlist.strings" <<<"$out"'
+expect "a right-to-left README that reads left to right is named" 'grep -q "README.ar.md is right to left but reads left to right on GitHub" <<<"$out"'
 expect "publish runs the project's own steps" '(cd "$DOC" && python3 -I "$KIT" publish) | grep -q "publish: the store.s text" && grep -q published "$DOC/published.txt"'
 : >"$TMP/gh.log"
 out="$(cd "$DOC" && pk gap "reading .properties tables" --why "a Java tool's text")"

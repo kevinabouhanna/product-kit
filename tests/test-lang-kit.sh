@@ -259,6 +259,75 @@ expect "apply writes nested JSON tables" \
   'lk apply "$TMP/es.json" >/dev/null && python3 -c "import json; d=json.load(open(\"locales/es.json\")); exit(d[\"menu\"] != {\"quit\": \"Salir\", \"open\": \"Abrir\"})"'
 
 # --------------------------------------------------------------------------
+echo "--- all of Apple's text: permission prompts, plurals, Shortcuts (#41)"
+P="$TMP/apple"; repo "$P"
+mkdir -p Resources/en.lproj Resources/ar.lproj Resources/ru.lproj
+cat >.product-kit.json <<'EOF'
+{"languages": {"ar": {"name": "العربية"}, "ru": {"name": "Русский"}},
+ "lang": {"strings": {"format": "strings", "path": "Resources/{code}.lproj/Localizable.strings"},
+          "more": [{"format": "strings", "path": "Resources/{code}.lproj/InfoPlist.strings", "keys": {"plist": "Resources/Info.plist"}},
+                   {"format": "stringsdict", "path": "Resources/{code}.lproj/Localizable.stringsdict"},
+                   {"format": "xcstrings", "path": "Resources/AppShortcuts.xcstrings"}]}}
+EOF
+cat >Resources/Info.plist <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleIdentifier</key><string>me.App</string>
+  <key>NSLocationUsageDescription</key><string>The app reads your Wi-Fi network's name.</string>
+  <key>NSCameraUsageDescription</key><string>The app shows the camera.</string>
+</dict></plist>
+EOF
+printf '"Quit" = "Quit";\n' >Resources/en.lproj/Localizable.strings
+printf '"Quit" = "إنهاء";\n' >Resources/ar.lproj/Localizable.strings
+printf '"Quit" = "Выйти";\n' >Resources/ru.lproj/Localizable.strings
+printf '"NSLocationUsageDescription" = "يقرأ التطبيق اسم شبكة Wi-Fi.";\n' >Resources/ar.lproj/InfoPlist.strings
+printf '"NSLocationUsageDescription" = "Приложение читает имя сети.";\n"NSCameraUsageDescription" = "Приложение показывает камеру.";\n' >Resources/ru.lproj/InfoPlist.strings
+plural() { # code, then the forms as key=value
+  local code="$1"; shift; local forms="" f
+  for f in "$@"; do forms+="<key>${f%%=*}</key><string>${f#*=}</string>"; done
+  cat >"Resources/$code.lproj/Localizable.stringsdict" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict><key>%d apps</key><dict>
+  <key>NSStringLocalizedFormatKey</key><string>%#@apps@</string>
+  <key>apps</key><dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string>
+    <key>NSStringFormatValueTypeKey</key><string>d</string>$forms</dict>
+</dict></dict></plist>
+EOF
+}
+plural en "one=%d app" "other=%d apps"
+plural ar "one=تطبيق" "other=%d تطبيقات"
+plural ru "one=%d приложение" "few=%d приложения" "many=%d приложений" "other=%d приложения"
+cat >Resources/AppShortcuts.xcstrings <<'EOF'
+{"sourceLanguage": "en", "version": "1.0", "strings": {
+  "Show speed in ${applicationName}": {"localizations": {
+    "ar": {"stringUnit": {"state": "translated", "value": "اعرض السرعة في ${applicationName}"}},
+    "ru": {"stringUnit": {"state": "translated", "value": "Показать скорость в ${applicationName}"}}}}}}
+EOF
+commit
+out="$(lks strings)"
+expect "an Info.plist's permission prompts are text to translate, each one" \
+  'grep -q "1 missing, such as: NSCameraUsageDescription" <<<"$out"'
+expect "a count's text needs every form the language has: Arabic's six" \
+  'grep -q "has no few, many, two, zero form in ar" <<<"$out"'
+expect "Russian's four, all there" '! grep -q "form in ru" <<<"$out"'
+expect "Shortcuts' phrases are held like any table" 'grep -q "lang-kit: Resources/AppShortcuts.xcstrings" <<<"$out"'
+cat >Resources/AppShortcuts.xcstrings <<'EOF'
+{"sourceLanguage": "en", "version": "1.0", "strings": {
+  "%lld connections": {"localizations": {
+    "en": {"variations": {"plural": {"one": {"stringUnit": {"state": "translated", "value": "%lld connection"}}, "other": {"stringUnit": {"state": "translated", "value": "%lld connections"}}}}},
+    "ru": {"variations": {"plural": {"one": {"stringUnit": {"state": "translated", "value": "%lld соединение"}}, "other": {"stringUnit": {"state": "translated", "value": "%lld соединения"}}}}}}}}}
+EOF
+expect "a catalog's plurals need the language's forms too" 'lks strings | grep -q "\"%lld connections\" varies by count but has no few, many form in ru"'
+expect "todo names the table each packet is for" 'lk todo | grep -q "العربية (ar): 1 to translate in Resources/{code}.lproj/InfoPlist.strings"'
+echo '{"ar": {"NSCameraUsageDescription": "يعرض التطبيق الكاميرا."}}' >"$TMP/ar.json"
+expect "apply --table writes into that table" \
+  'lks apply "$TMP/ar.json" --table "Resources/{code}.lproj/InfoPlist.strings" >/dev/null; grep -q "NSCameraUsageDescription" Resources/ar.lproj/InfoPlist.strings'
+out="$(lk add he Hebrew)"
+expect "add sets up a new language's other tables too" '[ -f Resources/he.lproj/InfoPlist.strings ] && grep -q "wrote Resources/he.lproj/InfoPlist.strings" <<<"$out"'
+expect "and says what a language written right to left needs" 'grep -q "written right to left" <<<"$out"'
+
+# --------------------------------------------------------------------------
 echo "--- the rest"
 cd "$TMP/app" || exit 1
 expect "vendor copies it to Scripts/lang-kit, runnable" 'lk vendor >/dev/null && [ -x Scripts/lang-kit ] && cmp -s Scripts/lang-kit "$KIT"'
