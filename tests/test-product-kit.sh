@@ -201,5 +201,40 @@ expect "then every spot is current" 'f | grep -q "all 6 spots are current"'
 echo '<!-- product-kit: price -->Free<!-- /product-kit -->' >>"$FA/app/README.md"
 expect "a spot naming a fact the config hasn't is named" 'f | grep -q "names a fact the config hasn.t: .*README.md: price"'
 
+echo "--- init: a new project in one command (#42)"
+# A tiny Mac app, the Swift package way: nothing of product-kit's yet.
+NEWAPP="$TMP/newapp"; mkdir -p "$NEWAPP/Sources/Tally"; git -C "$NEWAPP" init -q
+git -C "$NEWAPP" remote add origin https://github.com/me/tally.git
+cat >"$NEWAPP/Package.swift" <<'EOF'
+// swift-tools-version:5.9
+import PackageDescription
+let package = Package(name: "Tally", platforms: [.macOS(.v14)], targets: [.executableTarget(name: "Tally")])
+EOF
+echo 'print("Tally")' >"$NEWAPP/Sources/Tally/main.swift"
+git -C "$NEWAPP" add -A && git -C "$NEWAPP" commit -q -m start
+i() { (cd "$NEWAPP" && python3 -I "$KIT" init "$@" 2>&1) || true; }
+expect "--dry-run says what it would write, and writes nothing" \
+  'out="$(i --dry-run --name Tally --pitch "Counts what you count." --site none)"; grep -q "init: Tally (mac) (dry run" <<<"$out" && [ ! -f "$NEWAPP/.product-kit.json" ]'
+expect "without a pitch, it asks for one in one line" 'i --name Tally --site none | grep -q "say what it does in one line"'
+out="$(i --name Tally --pitch "Counts what you count." --site none)"
+expect "init finds a Mac app, and writes its config: the plan, the facts, the pictures, the copies" \
+  'python3 -c "import json,sys; c=json.load(open(sys.argv[1])); sys.exit(not (c[\"kind\"]==\"mac\" and c[\"repo\"]==\"me/tally\" and c[\"facts\"][\"pitch\"]==\"Counts what you count.\" and \"plan\" in c and c[\"shots\"][\"vendor\"]==\"scripts/shots-kit.swift\"))" "$NEWAPP/.product-kit.json"'
+expect "the plan's pages, the docs and the README with the facts' spots" \
+  '[ -f "$NEWAPP/docs/PLAN.md" ] && [ -f "$NEWAPP/docs/phases/01-first-version.md" ] && [ -f "$NEWAPP/docs/README.md" ] && grep -q "<!-- product-kit: pitch -->Counts what you count.<!-- /product-kit -->" "$NEWAPP/README.md"'
+expect "the list of pictures, local CI, the tools' copies, and CLAUDE.md" \
+  'grep -q "\"bundle\"" "$NEWAPP/shots/shots.json" && grep -q "scripts/docs-kit plan check" "$NEWAPP/.claude/ci.conf.sh" && [ -x "$NEWAPP/scripts/docs-kit" ] && [ -f "$NEWAPP/scripts/shots-kit.swift" ] && grep -q "## product-kit" "$NEWAPP/CLAUDE.md"'
+git -C "$NEWAPP" add -A && git -C "$NEWAPP" commit -q -m init && git -C "$NEWAPP" tag v0.1.0
+expect "then the facts fill in from the first tag" \
+  '(cd "$NEWAPP" && python3 -I "$KIT" facts --write >/dev/null); grep -q "<!-- product-kit: version -->0.1.0<!--" "$NEWAPP/README.md"'
+expect "and the doctor finds nothing unaccounted for" '(cd "$NEWAPP" && python3 -I "$KIT" doctor) | grep -q "nothing unaccounted for"'
+expect "run again, it changes nothing and says it kept everything" \
+  'before="$(git -C "$NEWAPP" status --porcelain)"; out="$(i --pitch x --site none)"; [ "$(git -C "$NEWAPP" status --porcelain)" = "$before" ] && grep -q "kept as they are" <<<"$out"'
+ARAPP="$TMP/arapp"; mkdir -p "$ARAPP"; git -C "$ARAPP" init -q; cp "$NEWAPP/Package.swift" "$ARAPP/"
+out="$(cd "$ARAPP" && python3 -I "$KIT" init --name Tally --pitch "Counts." --languages en,ar --site folder:site 2>&1)"
+expect "a language written right to left gets its README marked, and a site folder gets its pages" \
+  'grep -q "dir=\"rtl\"" "$ARAPP/README.ar.md" && [ -f "$ARAPP/site/index.html" ] && [ -f "$ARAPP/site/docs/_template.html" ] && grep -q "\"site\": \"site\"" "$ARAPP/.product-kit.json"'
+mkdir -p "$TMP/unknown"; git -C "$TMP/unknown" init -q
+expect "a project it can't tell the kind of is asked" 'out="$(cd "$TMP/unknown" && python3 -I "$KIT" init --pitch x --site none 2>&1)"; grep -q "what kind of project is it" <<<"$out"'
+
 [ "$fails" -eq 0 ] && echo "product-kit: every test passed" || echo "product-kit: $fails failed"
 exit $((fails > 0))

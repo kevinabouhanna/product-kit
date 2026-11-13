@@ -142,3 +142,28 @@ For <!-- product-kit: requires -->macOS 13 or later<!-- /product-kit -->, on App
 (`shots.site`, or `--site DIR`), in each page's language, and exits 1 when one is out of date;
 `--write` fills them. `status` runs it. A spot can't go inside an HTML attribute (a `<meta>`'s
 `content`): write those from the same words by hand.
+
+## A new project: `init` (#42)
+
+`product-kit init [--dry-run] [--kind KIND] [--name N] [--pitch P] [--languages en,fr]
+[--site none|gh-pages|folder:DIR|repo:OWNER/NAME]` sets a project up in one command. It finds
+what it can (the kind: a Mac app, an iPhone app, both, an app built on web views, a Claude
+plugin or a command-line tool, from its Swift package, Xcode project, Info.plist, build script or
+Tauri folder; the repository from `origin`; the app's table of text) and asks only for the rest:
+the name, a one-line pitch in plain words, the languages, the website. A person at the terminal
+is asked; a session passes them as options.
+
+It writes, for a new project:
+
+- `.product-kit.json`: the kind, the plan (its board's owner), the facts (the version from the
+  tag, the pitch), the languages and their tables, the pictures' list and the site;
+- the plan's pages, first: `docs/PLAN.md` and `docs/phases/01-first-version.md`, to write with
+  the owner, then `docs-kit plan init` once the board exists;
+- `docs/README.md`, the README with the facts' spots (and one per language, marked right to left
+  where it's written so), `shots/shots.json` for an app, a site folder's first pages;
+- `.claude/ci.conf.sh` (local CI: the plan, the docs, every language, with the project's copies),
+  the tools' copies (`scripts/`), and a product-kit section in CLAUDE.md.
+
+**An existing project is the owner's**: with a config already, `init` changes nothing it has. It
+says what it lacks, and `--fill` writes those missing files; its config is never rewritten
+(`doctor` says which keys matter). `--dry-run` says what it would do.
