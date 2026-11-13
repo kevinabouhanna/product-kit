@@ -7,7 +7,6 @@ Each phase is a milestone on GitHub and a page here; each plan is an issue, in t
 
 | Order | Plan | Phase |
 |---|---|---|
-| 7 | #37 Room for what a project needs that product-kit doesn't know yet, and a doctor that finds the gaps | [Phase 2: Any Mac or iPhone project](02-any-mac-or-iphone-project.md) |
 | 8 | #38 product-kit status: one short list of what's out of date | [Phase 2: Any Mac or iPhone project](02-any-mac-or-iphone-project.md) |
 
 ## Next
