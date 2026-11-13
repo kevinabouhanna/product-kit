@@ -20,6 +20,11 @@
 #   lang-kit check [base]          pages changed with their translations? (base: origin/main)
 #   lang-kit review <from> [to]    what changed in each language, for its reviewer
 #   lang-kit add <code> [name]     start a new language
+#   lang-kit todo [--since REF] [--json]
+#                                  only what to translate: new, missing, or its English changed
+#                                  since REF; each with where it's said and its glossary terms
+#   lang-kit apply <file>          writes {"<code>": {"<key>": "<text>"}} into the tables, then
+#                                  checks them as `strings` does
 #   lang-kit keys                  the text to translate, one per line
 #   lang-kit vendor [--check]      copy this file into the project
 #   lang-kit version
@@ -35,7 +40,7 @@ import subprocess
 import sys
 import xml.etree.ElementTree as ET
 
-VERSION = "2.3.0"
+VERSION = "2.4.0"
 CONFIGS = (".product-kit.json", ".docs-kit.json")
 
 
@@ -615,6 +620,187 @@ def review(project: Project, old: str, new: str) -> int:
 
 
 # --------------------------------------------------------------------------
+# lang-kit todo and apply: only what changed, as a small packet (product-kit#39)
+
+
+def where_said(project: Project, keys: set[str]) -> dict[str, list[str]]:
+    """Where each key is in the sources scanned (file:line), for the translator to see the
+    window it's in; only for keys that are the text itself."""
+    spec = project.tables.get("keys", {})
+    if not spec.get("scan") or not keys:
+        return {}
+    found: dict[str, list[str]] = {}
+    files = git("ls-files", root=project.root).split("\n")
+    for file in sorted(f for f in files if f and any(glob_match(f, p) for p in spec["scan"])):
+        path = project.root / file
+        if not path.exists():
+            continue
+        for n, line in enumerate(path.read_text(encoding="utf-8", errors="replace").split("\n"), 1):
+            for key in keys:
+                if len(found.get(key, [])) < 2 and json.dumps(key, ensure_ascii=False) in line:
+                    found.setdefault(key, []).append(f"{file}:{n}")
+    return found
+
+
+def todo_packets(project: Project, since: str | None) -> list[dict]:
+    """For each language, only what needs translating: text that's new or missing, and text
+    whose English changed since `since`, each with its English, where it's said, the
+    translation it had, and only the glossary terms it uses."""
+    if not project.tables:
+        fail(f"{project.config_name} has no lang.strings: where the tables are, and their format")
+    keys = project.keys()
+    source = project.english()
+    before = project.english(since) if since else {}
+    packets = []
+    for code in sorted(project.languages):
+        table = project.table(code) or {}
+        done = {k: v for k, v in table.items() if v is not None}
+        missing = sorted(keys - set(done))
+        changed = sorted(k for k in keys & set(done) if since and k in before and before[k] != source.get(k, k))
+        glossary, _ = project.glossary(code)
+        terms = [t for t in (glossary or {}).get("terms", []) if t.get("where") != "docs"]
+        wanted = missing + changed
+        said = where_said(project, set(wanted))
+        items = []
+        for key in wanted:
+            english = source.get(key, key)
+            item = {"key": key, "en": english}
+            if key in changed:
+                item["was"] = done[key]
+                item["en_was"] = before.get(key)
+            if said.get(key):
+                item["where"] = said[key]
+            uses = [{"en": t["en"], "text": t["text"]} for t in terms
+                    if re.search(r"(?<!\w)" + re.escape(t["en"]) + r"(?!\w)", english, re.I)]
+            if uses:
+                item["terms"] = uses
+            items.append(item)
+        if not items:
+            continue
+        packet = {"language": code, "name": project.name(code), "items": items}
+        if glossary:
+            if glossary.get("style"):
+                style = glossary["style"]
+                packet["style"] = " ".join(style) if isinstance(style, list) else str(style)
+            if glossary.get("avoid"):
+                packet["avoid"] = [a["text"] for a in glossary["avoid"]]
+        packets.append(packet)
+    return packets
+
+
+def todo(project: Project, rest: list[str]) -> int:
+    since = rest[rest.index("--since") + 1] if "--since" in rest and rest.index("--since") + 1 < len(rest) else None
+    packets = todo_packets(project, since)
+    if "--json" in rest:
+        print(json.dumps(packets, indent=1, ensure_ascii=False))
+        return 0
+    if not packets:
+        print("lang-kit todo: nothing to translate" + (f" since {since}" if since else ""))
+        return 0
+    for packet in packets:
+        print(f"{packet['name']} ({packet['language']}): {len(packet['items'])} to translate"
+              + (f"; style: {packet['style']}" if packet.get("style") else "")
+              + (f"; never: {', '.join(packet['avoid'])}" if packet.get("avoid") else ""))
+        for item in packet["items"]:
+            line = f"  {json.dumps(item['key'], ensure_ascii=False)}"
+            if item["en"] != item["key"]:
+                line += f" = {json.dumps(item['en'], ensure_ascii=False)}"
+            if "was" in item:
+                line += f" (was {json.dumps(item.get('en_was'), ensure_ascii=False)} → {json.dumps(item['was'], ensure_ascii=False)})"
+            if item.get("terms"):
+                line += " · terms: " + ", ".join(f"{t['en']} → {t['text']}" for t in item["terms"])
+            if item.get("where"):
+                line += " · " + ", ".join(item["where"])
+            print(line)
+    print('Write {"<code>": {"<key>": "<translation>"}} to a file, then `lang-kit apply <file>`.')
+    return 0
+
+
+def strings_literal(text: str) -> str:
+    return '"' + text.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n") + '"'
+
+
+def write_translations(project: Project, code: str, given: dict[str, str]) -> int:
+    """Puts translations into a language's table, in its own format; returns how many."""
+    fmt = project.format
+    path = project.root / (project.table_path(code))
+    if fmt == "command":
+        fail("lang-kit apply can't write a table its own command reads: write it by hand")
+    if fmt == "xcstrings":
+        catalog = json.loads(path.read_text(encoding="utf-8"))
+        for key, text in given.items():
+            entry = catalog.setdefault("strings", {}).setdefault(key, {})
+            entry.setdefault("localizations", {})[code] = {"stringUnit": {"state": "translated", "value": text}}
+        path.write_text(json.dumps(catalog, indent=2, ensure_ascii=False, separators=(",", " : ")) + "\n", encoding="utf-8")
+        return len(given)
+    if fmt == "json":
+        table = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        for key, text in given.items():
+            node = table
+            parts = key.split(".")
+            for part in parts[:-1]:
+                node = node.setdefault(part, {})
+            node[parts[-1]] = text
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(table, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        return len(given)
+    if fmt in ("resx", "ts"):
+        tree = ET.parse(path)
+        root = tree.getroot()
+        for key, text in given.items():
+            if fmt == "resx":
+                data = next((d for d in root.iter("data") if d.get("name") == key), None)
+                if data is None:
+                    data = ET.SubElement(root, "data", {"name": key, "xml:space": "preserve"})
+                value = data.find("value")
+                if value is None:
+                    value = ET.SubElement(data, "value")
+                value.text = text
+            else:
+                message = next((m for m in root.iter("message") if m.findtext("source") == key), None)
+                if message is None:
+                    fail(f"{path.name} has no message {key!r}: Qt's tables list their messages")
+                translation = message.find("translation")
+                if translation is None:
+                    translation = ET.SubElement(message, "translation")
+                translation.attrib.pop("type", None)
+                translation.text = text
+        tree.write(path, encoding="utf-8", xml_declaration=True)
+        return len(given)
+    # Apple's .strings: a line changed in place, or added at the end.
+    text = path.read_text(encoding="utf-8") if path.exists() else ""
+    lines = text.split("\n")
+    for key, translated in given.items():
+        pattern = re.compile(r'^(\s*)' + re.escape(strings_literal(key)) + r'\s*=\s*".*";\s*$')
+        new = f"{strings_literal(key)} = {strings_literal(translated)};"
+        for i, line in enumerate(lines):
+            if pattern.match(line):
+                lines[i] = pattern.match(line).group(1) + new
+                break
+        else:
+            if lines and lines[-1] == "":
+                lines.insert(len(lines) - 1, new)
+            else:
+                lines.append(new)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines) + ("" if lines and lines[-1] == "" else "\n"), encoding="utf-8")
+    return len(given)
+
+
+def apply(project: Project, file: str) -> int:
+    try:
+        given = json.loads(pathlib.Path(file).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        fail(f"{file} doesn't read as {{\"<code>\": {{\"<key>\": \"<translation>\"}}}}: {error}")
+    for code, translations in given.items():
+        if code not in project.languages:
+            fail(f"{code} isn't one of the project's languages ({', '.join(sorted(project.languages))})")
+        n = write_translations(project, code, translations)
+        print(f"lang-kit apply: {n} into {project.table_path(code)}")
+    return strings(project)
+
+
+# --------------------------------------------------------------------------
 # lang-kit add
 
 
@@ -733,7 +919,13 @@ def main(argv: list[str]) -> int:
         return review(project, rest[0], rest[1] if len(rest) > 1 else "HEAD")
     if command == "vendor":
         return vendor(project, "--check" in rest)
-    fail(f"no command {command!r}: strings, check, review, add, keys, vendor, version")
+    if command == "todo":
+        return todo(project, rest)
+    if command == "apply":
+        if not rest:
+            fail("usage: lang-kit apply <file of translations>")
+        return apply(project, rest[0])
+    fail(f"no command {command!r}: strings, check, review, todo, apply, add, keys, vendor, version")
     return 2
 
 

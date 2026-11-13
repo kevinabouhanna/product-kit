@@ -75,7 +75,7 @@ import ApplicationServices
 import CryptoKit
 import ScreenCaptureKit
 
-let shotsKitVersion = "2.3.0"
+let shotsKitVersion = "2.4.0"
 
 // MARK: - Config
 
@@ -1435,4 +1435,75 @@ func diff(_ old: [String], _ new: [String]) -> [String] {
     let o = Set(old), n = Set(new)
     return old.filter { !n.contains($0) }.map { "  - " + $0.trimmingCharacters(in: .whitespaces) }
         + new.filter { !o.contains($0) }.map { "  + " + $0.trimmingCharacters(in: .whitespaces) }
+}
+
+// MARK: - Alt text, as a packet (product-kit#39)
+
+/// For each picture: what changed in its window (its recorded tree, since a commit) and its
+/// alt text wherever it's shown, in every language: the one packet a session needs to rewrite
+/// the alt text after a retake, rather than every page.
+enum AltPacket {
+    static func run(names: Set<String>, manifest: Manifest, site: URL, repo: URL, since: String?) -> Int32 {
+        let shots = manifest.shots.filter { $0.file != nil && (names.isEmpty || names.contains($0.name)) }
+        if shots.isEmpty {
+            print("alt: no shot with a picture" + (names.isEmpty ? "" : " named \(names.sorted().joined(separator: ", "))"))
+            return 2
+        }
+        // Every page that could show a picture, with its text.
+        var pages: [(path: String, text: String, markdown: Bool)] = []
+        for file in Coverage.siteFiles(site) where file.hasSuffix(".html") || file.hasSuffix(".htm") {
+            if let text = try? String(contentsOf: site.appendingPathComponent(file), encoding: .utf8) { pages.append((file, text, false)) }
+        }
+        let markdownRoot = manifestInRepo ? site : repo
+        for file in Coverage.repoPages(markdownRoot) {
+            if let text = try? String(contentsOf: markdownRoot.appendingPathComponent(file), encoding: .utf8) { pages.append((file, text, true)) }
+        }
+        let img = try! NSRegularExpression(pattern: #"<img\b[^>]*>"#, options: [.caseInsensitive])
+        let alt = try! NSRegularExpression(pattern: #"\balt\s*=\s*"([^"]*)""#, options: [.caseInsensitive])
+        let md = try! NSRegularExpression(pattern: #"!\[([^\]]*)\]\(\s*<?([^)\s>]+)"#)
+
+        func alts(of file: String) -> [String] {
+            // The picture itself, from any page's folder: `../assets/x.png`, `assets/x.png?v=…`.
+            let path = try! NSRegularExpression(pattern: #"\b(?:src|srcset)\s*=\s*["'](?:\.\./)*"#
+                                                + NSRegularExpression.escapedPattern(for: file) + #"(?:["'?#\s])"#)
+            var found: [String] = []
+            for page in pages {
+                let ns = page.text as NSString
+                for m in img.matches(in: page.text, range: NSRange(location: 0, length: ns.length)) {
+                    let tag = ns.substring(with: m.range)
+                    guard path.firstMatch(in: tag, range: NSRange(location: 0, length: (tag as NSString).length)) != nil else { continue }
+                    let tns = tag as NSString
+                    let said = alt.firstMatch(in: tag, range: NSRange(location: 0, length: tns.length)).map { tns.substring(with: $0.range(at: 1)) }
+                    found.append("\(page.path): \"\(said ?? "")\"" + (said == nil ? " (no alt text)" : ""))
+                }
+                if page.markdown {
+                    for m in md.matches(in: page.text, range: NSRange(location: 0, length: ns.length)) {
+                        let linked = ns.substring(with: m.range(at: 2)).replacingOccurrences(of: #"^(\./|\.\./)+"#, with: "", options: .regularExpression)
+                        guard linked == file || linked.hasPrefix(file + "?") else { continue }
+                        found.append("\(page.path): \"\(ns.substring(with: m.range(at: 1)))\"")
+                    }
+                }
+            }
+            var seen = Set<String>()
+            return found.filter { seen.insert($0).inserted }
+        }
+
+        for shot in shots {
+            guard let file = shot.file else { continue }
+            print("\(shot.name) (\(file)):")
+            if let since {
+                let tree = "shots/trees/\(shot.name).txt"
+                let diffed = runTool("/usr/bin/git", ["-C", site.path, "diff", "--unified=0", since, "--", tree])
+                let lines = diffed.output.split(separator: "\n").filter { ($0.hasPrefix("+") || $0.hasPrefix("-")) && !$0.hasPrefix("+++") && !$0.hasPrefix("---") }
+                print(lines.isEmpty ? "  what changed: nothing in its tree since \(since)"
+                                    : "  what changed since \(since):\n" + lines.prefix(30).map { "    " + $0.trimmingCharacters(in: .whitespaces) }.joined(separator: "\n"))
+            }
+            var files = [file]
+            for language in manifest.languages ?? [] { files.append(language.file(file)) }
+            let said = files.flatMap(alts(of:))
+            print(said.isEmpty ? "  alt text: no page shows it" : "  alt text:\n" + said.map { "    " + $0 }.joined(separator: "\n"))
+        }
+        print("Rewrite each alt text that names what changed, in every language: the interface, never its numbers.")
+        return 0
+    }
 }

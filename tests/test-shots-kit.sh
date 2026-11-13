@@ -290,5 +290,25 @@ echo '{"app": "/Applications/A.app", "bundle": "me.A", "shots": []}' >"$APART/ap
 expect "a site on another branch keeps its own list, and migrate says why" \
   'out="$(cd "$APART/app" && "$KIT" migrate 2>&1)"; [ $? -ne 0 ] || true; grep -q "on another branch or in another repository, so it keeps its own list" <<<"$out" && [ -f "$APART/app/docs/assets.json" ]'
 
+echo "--- alt text, as a packet (#39)"
+ALT="$TMP/alt"; mkdir -p "$ALT/shots/trees" "$ALT/docs/images/fr" "$ALT/site/fr"
+git -C "$ALT" init -q
+echo '{"repo": "me/alt", "shots": {"media": "docs/images"}}' >"$ALT/.product-kit.json"
+cat >"$ALT/shots/shots.json" <<'EOF'
+{"app": "/Applications/Alt.app", "bundle": "me.Alt",
+ "languages": [{"code": "fr", "page": "fr/index.html", "assets": "docs/images/fr/"}],
+ "shots": [{"name": "home", "file": "docs/images/home.png", "open": [], "window": "Home"},
+           {"name": "settings", "file": "docs/images/settings.png", "open": [], "window": "Settings"}]}
+EOF
+echo '# Alt ![The Home window, with a Share button](docs/images/home.png) ![Settings](docs/images/settings.png)' >"$ALT/README.md"
+echo '# Alt ![La fenêtre Accueil](docs/images/fr/home.png)' >"$ALT/README.fr.md"
+echo 'AXWindow title="Home"' >"$ALT/shots/trees/home.txt"
+git -C "$ALT" add -A && git -C "$ALT" -c user.name=t -c user.email=t@t commit -q -m start
+printf 'AXWindow title="Home"\n  AXButton title="Share"\n' >"$ALT/shots/trees/home.txt"
+out="$(cd "$ALT" && "$KIT" alt home --since HEAD 2>&1)"
+expect "alt gives each picture's change and its alt text in every language" \
+  'grep -q "+ *AXButton title=\"Share\"" <<<"$out" && grep -q "README.md: \"The Home window, with a Share button\"" <<<"$out" && grep -q "README.fr.md: \"La fenêtre Accueil\"" <<<"$out"'
+expect "and only that picture's" '! grep -q "Settings" <<<"$out"'
+
 [ "$fails" -eq 0 ] && echo "shots-kit: every test passed" || echo "shots-kit: $fails failed"
 exit $((fails > 0))

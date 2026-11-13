@@ -219,6 +219,46 @@ EOF
 expect "a reader that fails is named" 'lks strings 2>&1 | grep -q "lang.strings.read failed (exit 1)"'
 
 # --------------------------------------------------------------------------
+echo "--- todo and apply: only what changed, as a packet (#39)"
+P="$TMP/todo"; repo "$P"
+mkdir -p Resources/en.lproj Resources/fr.lproj
+cat >.product-kit.json <<'EOF'
+{"languages": {"fr": {"name": "Français"}},
+ "lang": {"strings": {"format": "strings", "path": "Resources/{code}.lproj/Localizable.strings"},
+          "glossary": "Resources/{code}.lproj/Glossary.json"}}
+EOF
+printf '"quit" = "Quit";\n"open" = "Open the window";\n"save" = "Save";\n' >Resources/en.lproj/Localizable.strings
+printf '"quit" = "Quitter";\n"save" = "Enregistrer";\n' >Resources/fr.lproj/Localizable.strings
+cat >Resources/fr.lproj/Glossary.json <<'EOF'
+{"language": "fr", "style": ["Vouvoyez."], "avoid": [{"text": "Ok", "why": "D'accord"}],
+ "terms": [{"en": "window", "text": "fenêtre", "where": "docs"}, {"en": "Quit", "text": "Quitter"}]}
+EOF
+commit; git tag v1
+printf '"quit" = "Quit";\n"open" = "Open the window";\n"save" = "Save all";\n' >Resources/en.lproj/Localizable.strings
+commit
+out="$(lk todo --since v1)"
+expect "todo lists what's missing, and what's English changed since, with what it was" \
+  'grep -q "Français (fr): 2 to translate; style: Vouvoyez.; never: Ok" <<<"$out" && grep -q "\"open\" = \"Open the window\"" <<<"$out" && grep -q "\"save\" = \"Save all\" (was \"Save\" → \"Enregistrer\")" <<<"$out"'
+expect "and leaves out what's done" '! grep -q "\"quit\"" <<<"$out"'
+expect "--json gives each piece its glossary terms" \
+  'lk todo --since v1 --json | python3 -c "import json,sys; d=json.load(sys.stdin)[0]; sys.exit(d[\"language\"] != \"fr\" or len(d[\"items\"]) != 2)"'
+echo '{"fr": {"open": "Ouvrir la fenêtre", "save": "Tout enregistrer"}}' >"$TMP/fr.json"
+expect "apply writes them into the table and checks it" \
+  'lk apply "$TMP/fr.json" | grep -q "all 3 pieces of text" && grep -q "^\"save\" = \"Tout enregistrer\";$" Resources/fr.lproj/Localizable.strings && grep -q "^\"open\" = \"Ouvrir la fenêtre\";$" Resources/fr.lproj/Localizable.strings'
+expect "then there's nothing left to do" 'lk todo | grep -q "nothing to translate"'
+echo '{"de": {"open": "Öffnen"}}' >"$TMP/de.json"
+expect "apply refuses a language the project hasn't" 'lks apply "$TMP/de.json" 2>&1 | grep -q "de isn.t one of the project.s languages"'
+P="$TMP/todo-json"; repo "$P"
+mkdir -p locales
+echo '{"languages": {"es": {}}, "lang": {"strings": {"format": "json", "path": "locales/{code}.json"}}}' >.product-kit.json
+echo '{"menu": {"quit": "Quit", "open": "Open"}}' >locales/en.json
+echo '{"menu": {"quit": "Salir"}}' >locales/es.json
+commit
+echo '{"es": {"menu.open": "Abrir"}}' >"$TMP/es.json"
+expect "apply writes nested JSON tables" \
+  'lk apply "$TMP/es.json" >/dev/null && python3 -c "import json; d=json.load(open(\"locales/es.json\")); exit(d[\"menu\"] != {\"quit\": \"Salir\", \"open\": \"Abrir\"})"'
+
+# --------------------------------------------------------------------------
 echo "--- the rest"
 cd "$TMP/app" || exit 1
 expect "vendor copies it to Scripts/lang-kit, runnable" 'lk vendor >/dev/null && [ -x Scripts/lang-kit ] && cmp -s Scripts/lang-kit "$KIT"'
