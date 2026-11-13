@@ -65,7 +65,7 @@ Next, Later) are set on items, and steps copy them.
   --order <N> --body-file <spec.md>`, mention each new item on its phase's page, `docs-kit plan
   check`, then tell the owner where each went and what moved.
 
-The reference is `docs/plan.md` in product-kit.
+The reference is `docs/docs-kit-plan.md` in product-kit.
 
 ## Stage 2: the docs change with the feature
 

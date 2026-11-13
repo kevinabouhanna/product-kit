@@ -1,0 +1,13 @@
+{
+  "repo": "kevinabouhanna/product-kit",
+  "name": "product-kit",
+  "plan": {
+    "pages": "docs/phases",
+    "index": "docs/phases/README.md",
+    "doc": "docs/PLAN.md",
+    "project": {
+      "owner": "kevinabouhanna",
+      "number": 11
+    }
+  }
+}
