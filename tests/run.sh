@@ -6,5 +6,7 @@ for t in test-product-kit.sh test-docs-kit.sh test-lang-kit.sh test-shots-kit.sh
   echo "=== $t"
   ./"$t" || status=1
 done
+echo "=== test-generic.py"
+python3 -I ./test-generic.py || status=1
 [ "$status" -eq 0 ] && echo "=== Every test passed." || echo "=== Some tests failed."
 exit "$status"

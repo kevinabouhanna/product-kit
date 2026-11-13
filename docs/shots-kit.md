@@ -21,6 +21,13 @@ compares that **tree** with the one recorded when the picture was taken
 renamed setting or a moved section does. Because it reads the tree rather than looking at the
 picture, a check costs nothing and never tires.
 
+**What's masked**, so that only the interface counts: numbers (with their separators); month and
+weekday names and the parts of the day (AM, PM, 下午, nachmittags) in every language the project
+shows, taken from macOS's own date formats for each (`languages` in the config, and the
+manifest's); and the project's own values that change by themselves, `shots.masks` (a
+network speed's unit, a price, a percentage). `shots-kit mask` prints any text as a tree would
+show it, to try a mask (#32).
+
 A change only to how something looks (a colour, an icon, spacing) leaves the tree the same, so
 each picture also keeps its **look**, a small thumbnail of its colours outside what's masked
 (`<name>.look`). That's advice, not a failure.
@@ -76,6 +83,8 @@ that one list: `shots.repo_assets` isn't used.
 | `readme` | Copies the site's pictures the README uses into it, in every language. Files only. |
 | `coverage` | **The asset check**: every image, GIF and video the site, the README and the docs use is a shot's picture or listed, with the windows it shows (`shows` and `made`) or why it shows none (`none`). Files only, so it runs in CI. |
 | `coverage-test` | Where `coverage` looks for media, on made-up pages. |
+| `mask` | Prints each line it reads as a tree would show it: the numbers, dates and the project's own values masked, in every language it shows. Files only, for trying `shots.masks`. |
+| `mask-test` | The masks on made-up labels in English, Chinese, French, German, Arabic and Japanese. |
 | `vendor [--check]` | Copies the tool's source into the project (`shots.vendor`), so its CI can build it without the plugin, with `AccessibilityAudit.swift` beside it unless the project has its own (`shots.audit`). |
 | `version` | |
 
@@ -135,7 +144,7 @@ one of the two VM lanes. One VM run per site at a time.
 
 | Key | Meaning |
 |---|---|
-| `shots.site` | The site's checkout, from the project's main checkout, so it's the same from any worktree: `../NetworkMonitor-site`. Without it (or `--site`), the manifest is the project's own. |
+| `shots.site` | The site's checkout, from the project's main checkout, so it's the same from any worktree: `../App-site`. Without it (or `--site`), the manifest is the project's own. |
 | `shots.repo_assets` | The README's and the docs' list of their assets (`assets.json`), when there's a site. |
 | `shots.lane` | The app's Mac lane (its bundle id's last part, lowercased). |
 | `shots.launch.background` | Launch arguments that open the app's windows behind the others without activating it, for commands that only read trees: `["-background", "YES"]`. The app has to support them. |
@@ -150,7 +159,12 @@ one of the two VM lanes. One VM run per site at a time.
 | `shots.vm.prepare` | A command run on this Mac, in the project, before the VM starts, writing into `$SHOTS_VM_DIR` what has to be made from this Mac: other apps' icons, its time zone (#12). |
 | `shots.vm.image` | The project's own image (`mac-vm image <name>`) to clone, set up once with the app's approvals, rather than the golden image (#12). |
 | `shots.branches` | `{"site": "gh-pages", "repo": "main"}`: the branches the asset check's report names. |
-| `site.url` | The site's address: links to `assets/…` written with it (a social card's `<meta>`) are the site's. |
+| `shots.masks` | The project's own values that change by themselves, masked after numbers and dates: a list of `{"pattern": …, "as": …}`, applied in order to text whose numbers already read `#`. A network speed: `{"pattern": "#\\s?([KMGT]?B/s)", "as": "# ‹unit›"}`; a price: `{"pattern": "[$€£]#", "as": "‹money›"}`. |
+| `shots.keep_width` | Roles whose width is kept, numbers and all, because they're drawn at one width whatever they show: a menu-bar readout, `["AXMenuBarItem"]`. Any other element with a number keeps only its height. |
+| `shots.media` | The site's folder of pictures, GIFs and videos (`assets`). |
+| `shots.page` | The site's page with the pictures and their clickable areas, in the first language (`index.html`); each other language names its own (`languages[].page`). |
+| `languages`, `lang.source` | The languages the project shows (shared with lang-kit): their dates and times are masked. |
+| `site.url` | The site's address: links to the media folder written with it (a social card's `<meta>`) are the site's. |
 
 ## `shots/shots.json`
 
@@ -192,4 +206,4 @@ checked against NetworkMonitor's pictures when the tool changes.
 
 macOS apps only (a project's own drawings could be anything's), and one Swift file holding both what's the same everywhere (the manifest, the
 asset check, the diffs, the page) and what's macOS's (the Accessibility API, ScreenCaptureKit,
-launching). They separate when a second platform comes (web pages, Windows apps: #1, step 5).
+launching). They separate for iPhone and web views (#35).
