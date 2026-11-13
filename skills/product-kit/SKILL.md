@@ -29,6 +29,7 @@ the interface changed) → videos → publish (README, wiki, website) → native
 | A new image, GIF or video | List it: `shots-kit coverage` until it passes | It names the windows it shows, or why none |
 | Before a pull request | `product-kit status` | Do each `✗`; the `·` lines are to look at |
 | A release | `product-kit status --release`: the review, the site's docs, the pictures | Videos it flags are remade only when asked |
+| A version, a requirement, the pitch or a feature list changes | Change `facts` in the config, then `product-kit facts --write` | Never edit a marked spot by hand |
 | A new language | `lang-kit add <code> [name]` | Follow the order it prints |
 | Starting work in a project, or unsure what's missing | `product-kit doctor` | Do what each line says |
 | product-kit can't do something the project needs | Handle it in the project with an extension (`docs/product-kit.md`), then `product-kit gap "<what>" --why "<why>"` | It moves into product-kit when a second project needs it |

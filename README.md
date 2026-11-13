@@ -26,6 +26,7 @@ that says which command to run when (#34). They share one config, `.product-kit.
 | `product-kit shots` (`shots-kit`) | Every picture, GIF and video listed with the window it shows; reads each picture's window through the Accessibility API, or compares the app's own drawings of it pixel by pixel, retakes only those whose interface changed, and flags the videos. With or without a website. [Reference](docs/shots-kit.md) | ✅ macOS apps (NetworkMonitor, claude-profiles-mac); iPhone: #43; web views: #46; Windows: phase 3 |
 | `product-kit doctor`, `gap`, `publish` | What a project shows people that product-kit can't account for yet; something it can't do, into its Inbox; a project's own places to publish. [Reference](docs/product-kit.md) | ✅ |
 | `product-kit projects`, `vendor --all` | Every project that uses product-kit, and its copies of the tools brought up to this version in one go: an issue and a pull request in each. One version for every tool. [Reference](docs/product-kit.md) | ✅ |
+| `product-kit facts` | The version, requirements, links, price and pitch written once in the config, and kept the same in every page that marks them, in each page's language. [Reference](docs/product-kit.md#the-facts-written-once-40) | ✅ |
 | `product-kit status` | What's out of date, across all of it: each with the command that fixes it, the words Claude writes, or what only Kevin can do; `--release` adds a release's steps. [Reference](docs/product-kit.md#whats-out-of-date-status-38) | ✅ |
 
 ## The order
