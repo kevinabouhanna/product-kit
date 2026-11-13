@@ -109,3 +109,36 @@ left. `--release` adds a release's steps: the pictures (drawn by the app, or ret
 installed), the native review (`lang-kit review <last tag>`), the website's docs pages, the
 wiki. A session runs it before a pull request and before a release; each project's CI keeps the
 checks it runs with its own copies of the tools.
+
+## The facts, written once (#40)
+
+The version, the system it needs, the download link, the price, the size, the one-line pitch,
+the list of features: written once, in the config's `facts`, and kept the same in every page
+that marks a spot for one:
+
+```json
+"facts": {
+  "version": {"from": "tag"},
+  "size": {"from": "command", "run": ["scripts/dmg-size"]},
+  "requires": {"en": "macOS 13 or later", "zh-Hans": "macOS 13 或更高版本"},
+  "pitch": "Live network speed in your Mac's menu bar, and which app used your data.",
+  "features": {"en": ["…", "…"], "zh-Hans": ["…", "…"]}
+}
+```
+
+A value is the same in every language, or one per language; it's written as it is, or read
+from where it lives (`from`): `tag` (the latest, without its `v`), `plist` (`file`, and `key`,
+`CFBundleShortVersionString` by default), `file`, or `command` (`run`, what it prints). A list
+is a Markdown list in a page and `<li>` items on the site.
+
+A spot is an HTML comment around the value, which GitHub and browsers don't show:
+
+```html
+<span>Version <!-- product-kit: version -->1.30.2<!-- /product-kit --></span>
+For <!-- product-kit: requires -->macOS 13 or later<!-- /product-kit -->, on Apple silicon or Intel.
+```
+
+`product-kit facts` checks every spot in the README, its translations, `docs/` and the site
+(`shots.site`, or `--site DIR`), in each page's language, and exits 1 when one is out of date;
+`--write` fills them. `status` runs it. A spot can't go inside an HTML attribute (a `<meta>`'s
+`content`): write those from the same words by hand.

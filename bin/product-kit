@@ -18,6 +18,9 @@
   product-kit status [--release] [--json] [--base REF]
                               what's out of date, across all of it: each with the command that
                               fixes it, or the words Claude writes, or what only Kevin can do
+  product-kit facts [--write] [--site DIR] [--json]
+                              the version, requirements, links and pitch, written once in the
+                              config and kept the same in every page that marks them
   product-kit gap "<what>" --why "<why>"
                               puts something product-kit couldn't do here in its Inbox
   product-kit publish [--dry-run]
@@ -562,6 +565,11 @@ def status_items(root: pathlib.Path, base: str, release: bool) -> list[dict]:
                 add("an English page changed without its translations: " + first_lines(out), "change each copy, or "
                     "`No translation needed: <why>` in the pull request", "claude", True)
 
+    if config.get("facts"):
+        code, out = tool_check(["python3", "-I", str(HERE / "product-kit"), "facts", "--repo", str(root)], root)
+        if code != 0:
+            add("the facts aren't the same everywhere: " + first_lines(out, 2), "`product-kit facts --write`", "run", True)
+
     if release:
         tag = subprocess.run(["git", "describe", "--tags", "--abbrev=0"], cwd=root, capture_output=True, text=True)
         last = tag.stdout.strip() or "<the last release's tag>"
@@ -603,6 +611,135 @@ def status(args: list[str]) -> int:
                 mark = "✗" if i["fails"] else "·"
                 say(f"  {mark} {who}: {i['what']}\n      → {i['do']}")
     return 1 if any(i["fails"] for i in items) else 0
+
+
+# The facts, written once and kept in step everywhere they're shown (#40)
+
+SPOT = re.compile(r"<!--\s*product-kit:\s*([\w-]+)\s*-->(.*?)<!--\s*/product-kit\s*-->", re.S)
+
+
+def main_checkout(root: pathlib.Path) -> pathlib.Path:
+    r = subprocess.run(["git", "-C", str(root), "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                       capture_output=True, text=True)
+    return pathlib.Path(r.stdout.strip()).parent if r.returncode == 0 else root
+
+
+def fact_value(name: str, spec, root: pathlib.Path):
+    """A fact's value: as written, or read from where it lives (`from`)."""
+    if not isinstance(spec, dict) or "from" not in spec:
+        return spec
+    source = spec["from"]
+    if source == "tag":
+        r = subprocess.run(["git", "describe", "--tags", "--abbrev=0"], cwd=root, capture_output=True, text=True)
+        if r.returncode != 0:
+            raise RuntimeError(f"facts.{name}: no tag to read the version from")
+        return re.sub(r"^v", "", r.stdout.strip())
+    if source == "plist":
+        import plistlib
+        with open(root / spec["file"], "rb") as f:
+            return str(plistlib.load(f)[spec.get("key", "CFBundleShortVersionString")])
+    if source == "file":
+        return (root / spec["file"]).read_text(encoding="utf-8").strip()
+    if source == "command":
+        r = subprocess.run(spec["run"], cwd=root, capture_output=True, text=True)
+        if r.returncode != 0:
+            raise RuntimeError(f"facts.{name}: `{' '.join(spec['run'])}` failed: {(r.stderr or r.stdout).strip()[-200:]}")
+        return r.stdout.strip()
+    raise RuntimeError(f"facts.{name}: `from` is tag, plist, file or command, not {source!r}")
+
+
+def in_language(value, code: str, source: str):
+    """A fact in one language: the same for all, or a value per language code."""
+    if isinstance(value, dict) and not ("from" in value):
+        return value.get(code, value.get(source))
+    return value
+
+
+def render(value, html: bool) -> str:
+    if isinstance(value, list):
+        return "\n" + "\n".join((f"<li>{v}</li>" if html else f"- {v}") for v in value) + "\n"
+    return str(value)
+
+
+def fact_files(root: pathlib.Path, config: dict, site: pathlib.Path | None) -> list[tuple[pathlib.Path, str, bool]]:
+    """(file, its language, whether it's HTML) for every page that can hold a fact."""
+    source = config.get("lang", {}).get("source") or "en"
+    languages = config.get("languages", {})
+    out = []
+    for f in sorted(root.glob("README*.md")) + sorted((root / "docs").rglob("*.md") if (root / "docs").is_dir() else []):
+        code = source
+        m = re.fullmatch(r"README\.([\w-]+)\.md", f.name)
+        if m and m.group(1) in languages:
+            code = m.group(1)
+        rel = f.relative_to(root).parts
+        if len(rel) > 2 and rel[0] == "docs" and rel[1] in languages:
+            code = rel[1]
+        out.append((f, code, False))
+    if site and site.is_dir() and site != root:
+        folders = {v.get("site"): c for c, v in languages.items() if isinstance(v, dict) and v.get("site")}
+        for f in sorted(site.rglob("*.html")):
+            rel = f.relative_to(site).parts
+            if any(part.startswith(".") for part in rel):
+                continue
+            out.append((f, folders.get(rel[0], source) if len(rel) > 1 else source, True))
+    return out
+
+
+def facts_run(args: list[str]) -> int:
+    root = pathlib.Path(args[args.index("--repo") + 1]).resolve() if "--repo" in args else checkout_root()
+    config_file = next((root / c for c in CONFIGS if (root / c).exists()), None)
+    config = json.loads(config_file.read_text(encoding="utf-8")) if config_file else {}
+    facts = config.get("facts")
+    if not facts:
+        say("facts: the config has no `facts`: the version, requirements, links and pitch, written once (docs/product-kit.md)")
+        return 0
+    site = None
+    if "--site" in args:
+        site = pathlib.Path(args[args.index("--site") + 1]).resolve()
+    elif config.get("shots", {}).get("site"):
+        site = (main_checkout(root) / config["shots"]["site"]).resolve()
+    try:
+        values = {name: fact_value(name, spec, root) for name, spec in facts.items()}
+    except (RuntimeError, OSError, KeyError) as e:
+        say(f"facts: {e}")
+        return 2
+    source = config.get("lang", {}).get("source") or "en"
+    stale, unknown, spots = [], [], 0
+    for file, code, html in fact_files(root, config, site):
+        text = file.read_text(encoding="utf-8", errors="replace")
+        if "product-kit:" not in text:
+            continue
+
+        def fill(m):
+            nonlocal spots
+            spots += 1
+            name, now = m.group(1), m.group(2)
+            if name not in values:
+                unknown.append(f"{file}: {name}")
+                return m.group(0)
+            want = render(in_language(values[name], code, source), html)
+            if want != now:
+                where = file.relative_to(site) if site and site in file.parents else file.relative_to(root)
+                stale.append(f"{where}: {name} is {now.strip()[:50]!r}, should be {want.strip()[:50]!r}")
+                whole, start = m.group(0), m.start(0)
+                return whole[:m.start(2) - start] + want + whole[m.end(2) - start:]
+            return m.group(0)
+        new = SPOT.sub(fill, text)
+        if "--write" in args and new != text:
+            file.write_text(new, encoding="utf-8")
+    if "--json" in args:
+        print(json.dumps({"facts": values, "stale": stale, "unknown": unknown}, indent=1, ensure_ascii=False))
+    elif "--write" in args:
+        say(f"facts: wrote {len(stale)} of {spots} spots" if stale else f"facts: all {spots} spots were current")
+    elif stale:
+        say(f"facts: {len(stale)} of {spots} spots are out of date (`product-kit facts --write`):")
+        for line in stale:
+            say(f"  {line}")
+    else:
+        say(f"facts: all {spots} spots are current" + ("" if spots else "; none yet: mark them `<!-- product-kit: version -->…<!-- /product-kit -->`"))
+    for u in unknown:
+        say(f"facts: a spot names a fact the config hasn't: {u}")
+    return 1 if (unknown or (stale and "--write" not in args)) else 0
 
 
 def gap(args: list[str]) -> int:
@@ -681,6 +818,8 @@ def main(argv: list[str]) -> int:
         return doctor(rest)
     if command == "status":
         return status(rest)
+    if command == "facts":
+        return facts_run(rest)
     if command == "gap":
         return gap(rest)
     if command == "publish":

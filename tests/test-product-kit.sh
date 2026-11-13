@@ -162,5 +162,32 @@ expect "with nothing failing, it exits 0, whatever's left to look at" \
 expect "--json says who does each, and whether it fails" \
   'json="$(cd "$ST" && python3 -I "$KIT" status --json --base HEAD)"; python3 -c "import json,sys; d=json.loads(sys.argv[1]); sys.exit(not d or any(set(i) != {\"what\",\"do\",\"who\",\"fails\"} for i in d))" "$json"'
 
+echo "--- the facts, written once (#40)"
+FA="$TMP/facts"; mkdir -p "$FA/app/docs/fr" "$FA/app-site/fr"
+git -C "$FA/app" init -q
+cat >"$FA/app/.product-kit.json" <<'EOF'
+{"repo": "me/fa", "languages": {"fr": {"name": "Français", "site": "fr"}},
+ "shots": {"site": "../app-site"},
+ "facts": {"version": {"from": "tag"}, "size": {"from": "command", "run": ["echo", "14.9 MB"]},
+           "requires": {"en": "macOS 13 or later", "fr": "macOS 13 ou plus récent"},
+           "features": {"en": ["Live speed", "Which app used your data"], "fr": ["Le débit en direct", "Quelle app a utilisé vos données"]}}}
+EOF
+printf '# Fa\n\nFor <!-- product-kit: requires -->macOS 12<!-- /product-kit -->.\n\n<!-- product-kit: features --><!-- /product-kit -->\n' >"$FA/app/README.md"
+printf '# Fa\n\nPour <!-- product-kit: requires -->macOS 12<!-- /product-kit -->.\n' >"$FA/app/README.fr.md"
+echo '<span>Version <!-- product-kit: version -->1.29.0<!-- /product-kit --></span> <span><!-- product-kit: size -->9 MB<!-- /product-kit --></span>' >"$FA/app-site/index.html"
+echo '<ul><!-- product-kit: features --><!-- /product-kit --></ul>' >"$FA/app-site/fr/index.html"
+git -C "$FA/app" add -A && git -C "$FA/app" -c user.name=t -c user.email=t@t commit -q -m start && git -C "$FA/app" tag v1.30.2
+f() { (cd "$FA/app" && python3 -I "$KIT" facts "$@" 2>&1) || true; }
+expect "facts says which spots are out of date, and fails" \
+  'out="$(f)"; grep -q "6 of 6 spots are out of date" <<<"$out" && grep -q "index.html: version is .1.29.0., should be .1.30.2." <<<"$out"'
+f --write >/dev/null
+expect "--write fills each spot, in each page's language, from the tag and a command" \
+  'grep -q "Version <!-- product-kit: version -->1.30.2<!--" "$FA/app-site/index.html" && grep -q "14.9 MB" "$FA/app-site/index.html" && grep -q "Pour <!-- product-kit: requires -->macOS 13 ou plus récent<!--" "$FA/app/README.fr.md"'
+expect "a list is Markdown's in a page, HTML's on the site" \
+  'grep -q "^- Which app used your data$" "$FA/app/README.md" && grep -q "<li>Quelle app a utilisé vos données</li>" "$FA/app-site/fr/index.html"'
+expect "then every spot is current" 'f | grep -q "all 6 spots are current"'
+echo '<!-- product-kit: price -->Free<!-- /product-kit -->' >>"$FA/app/README.md"
+expect "a spot naming a fact the config hasn't is named" 'f | grep -q "names a fact the config hasn.t: .*README.md: price"'
+
 [ "$fails" -eq 0 ] && echo "product-kit: every test passed" || echo "product-kit: $fails failed"
 exit $((fails > 0))

@@ -7,7 +7,6 @@ Each phase is a milestone on GitHub and a page here; each plan is an issue, in t
 
 | Order | Plan | Phase |
 |---|---|---|
-| 9 | #39 Translate and document only what changed: small packets for Claude | [Phase 2: Any Mac or iPhone project](02-any-mac-or-iphone-project.md) |
 | 10 | #40 One place for the facts and the pitch: version, requirements, links, features | [Phase 2: Any Mac or iPhone project](02-any-mac-or-iphone-project.md) |
 | 11 | #41 All of Apple's text in every language: permission prompts, plurals, Shortcuts, widgets, right to left | [Phase 2: Any Mac or iPhone project](02-any-mac-or-iphone-project.md) |
 | 12 | #42 product-kit init: a new Mac or iPhone project set up in one command | [Phase 2: Any Mac or iPhone project](02-any-mac-or-iphone-project.md) |
