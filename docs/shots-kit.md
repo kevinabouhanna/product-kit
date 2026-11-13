@@ -153,6 +153,7 @@ changes nothing.
 | `audit [names]` | Each window checked for what VoiceOver can't name, with real data in its lists. |
 | `readme` | Copies the site's pictures the README uses into it, in every language. Files only. |
 | `coverage` | **The asset check**: every image, GIF and video the site, the README and the docs use is a shot's picture or listed, with the windows it shows (`shows` and `made`) or why it shows none (`none`). Files only, so it runs in CI. |
+| `alt [names] [--since REF]` | Each picture's alt text wherever it's shown, in every language, and what changed in its window's tree since `REF`: the packet for rewriting the alt text after a retake (#39). Files only. |
 | `coverage-test` | Where `coverage` looks for media, on made-up pages. |
 | `mask` | Prints each line it reads as a tree would show it: the numbers, dates and the project's own values masked, in every language it shows. Files only, for trying `shots.masks`. |
 | `mask-test` | The masks on made-up labels in English, Chinese, French, German, Arabic and Japanese. |

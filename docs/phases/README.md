@@ -3,12 +3,6 @@
 
 Each phase is a milestone on GitHub and a page here; each plan is an issue, in the order of the project board.
 
-## Now
-
-| Order | Plan | Phase |
-|---|---|---|
-| 8 | #38 product-kit status: one short list of what's out of date | [Phase 2: Any Mac or iPhone project](02-any-mac-or-iphone-project.md) |
-
 ## Next
 
 | Order | Plan | Phase |

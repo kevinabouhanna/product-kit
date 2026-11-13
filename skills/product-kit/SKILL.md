@@ -22,10 +22,10 @@ the interface changed) → videos → publish (README, wiki, website) → native
 | A new project | Write `docs/PLAN.md` and `docs/phases/*.md` with the owner, then `docs-kit plan init` (`--dry-run` first) | `docs-kit plan check` in CI |
 | The plan changes (a new issue, a new order, a phase done) | `docs-kit plan sync`, then `docs-kit plan check`, which must pass | Mention each new item (`#N`) on its phase's page; a new item is a sub-issue of its phase issue |
 | The owner says "scan the inbox" | `docs-kit plan inbox` | Follow [Scan the inbox](../../docs/docs-kit-plan.md#scan-the-inbox); never take an entry in unasked |
-| The app's text changes | `lang-kit strings` until it passes; translate with the language's glossary open | `docs-kit check` asks for the page in `docs/` that describes it, in every language |
+| The app's text changes | `lang-kit todo`: translate only the packet, then `lang-kit apply <file>` | `docs-kit todo` names the paragraphs to change, and their copies |
 | An English page changes | Its copy in every language, in the same pull request (`lang-kit check`) | Deliberately English only: `No translation needed: <why>` in the pull request |
 | No docs are needed after all | `No docs needed: <why>` in the pull request, then `docs-kit check` again | Pages for developers don't count |
-| A window a picture shows changes | After the release is installed: `shots-kit check`, then `shots-kit update` | Rewrite the alt text of each retaken picture from the diff it prints |
+| A window a picture shows changes | After the release is installed: `shots-kit check`, then `shots-kit update` | `shots-kit alt <names> --since <ref>`: rewrite each alt text from the packet |
 | A new image, GIF or video | List it: `shots-kit coverage` until it passes | It names the windows it shows, or why none |
 | Before a pull request | `product-kit status` | Do each `✗`; the `·` lines are to look at |
 | A release | `product-kit status --release`: the review, the site's docs, the pictures | Videos it flags are remade only when asked |

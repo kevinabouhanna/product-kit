@@ -22,6 +22,8 @@ One Python file, the standard library only. Each project keeps a copy at `Script
 | `lang-kit review <from> [to]` | Markdown for each language's reviewer: what's new or changed in its table between two commits or tags (English beside it, in the table's order) and the pages that changed. |
 | `lang-kit add <code> [name]` | Starts a language: adds it to `languages`, writes its glossary from another language's terms (to translate) and its table, and prints the order to do the rest in. |
 | `lang-kit keys` | The text to translate, one per line. |
+| `lang-kit todo [--since REF] [--json]` | Only what to translate, per language: text new or missing, and text whose English changed since `REF` (with the translation it had); each with where the code says it and only the glossary terms it uses, and the language's style and words to avoid. A small packet, in place of the whole table and glossary (#39: 7 pieces of NetworkMonitor's Chinese, 1.3 KB against 78 KB). |
+| `lang-kit apply <file>` | Writes `{"<code>": {"<key>": "<translation>"}}` into each table, in its own format (`.strings`, `.xcstrings`, JSON, `.resx`, Qt), then checks them as `strings` does. |
 | `lang-kit vendor [--check]` | Copies this file to the project's `Scripts/lang-kit`, or says whether that copy is this one. |
 | `lang-kit -C <dir> …` | Runs as if started in `<dir>`. |
 

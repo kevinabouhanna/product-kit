@@ -548,14 +548,14 @@ def status_items(root: pathlib.Path, base: str, release: bool) -> list[dict]:
         if config.get("check", {}).get("needs_docs"):
             code, out = tool_check(["python3", "-I", str(HERE / "docs-kit"), "check", base], root)
             if code != 0:
-                add("a change needs its docs: " + first_lines(out), "write the page in `docs/` (every language), or "
+                add("a change needs its docs: " + first_lines(out), "`docs-kit todo` names the paragraphs (every language), or "
                     "`No docs needed: <why>` in the pull request", "claude", True)
         # Every language.
         if config.get("lang", {}).get("strings"):
             code, out = tool_check(["python3", "-I", str(HERE / "lang-kit"), "strings"], root)
             if code != 0:
-                add("the app's text isn't whole in every language: " + first_lines(out), "translate what "
-                    "`lang-kit strings` lists, with the glossary", "claude", True)
+                add("the app's text isn't whole in every language: " + first_lines(out), "`lang-kit todo` gives only "
+                    "what to translate; then `lang-kit apply <file>`", "claude", True)
         if config.get("languages"):
             code, out = tool_check(["python3", "-I", str(HERE / "lang-kit"), "check", base], root)
             if code != 0:

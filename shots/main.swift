@@ -87,8 +87,12 @@ struct ShotsKit {
             while let line = readLine(strippingNewline: true) { print(mask(line)) }
             exit(0)
         }
-        guard let command = args.first, ["check", "update", "tree", "audit", "coverage", "coverage-test", "readme", "record"].contains(command) else {
-            print("usage: shots-kit check [--look]|update|audit [names…]|tree <name>|record <names…>|coverage|coverage-test|mask|mask-test|readme [--site DIR] [--repo DIR] [--app APP] [--language CODE] [--vm|--here] [--wait-away MINUTES]|version")
+        var altSince: String?
+        if let i = args.firstIndex(of: "--since"), i + 1 < args.count {
+            altSince = args[i + 1]; args.removeSubrange(i...(i + 1))
+        }
+        guard let command = args.first, ["check", "update", "tree", "audit", "coverage", "coverage-test", "readme", "record", "alt"].contains(command) else {
+            print("usage: shots-kit check [--look]|update|audit [names…]|tree <name>|record <names…>|coverage|coverage-test|mask|mask-test|alt [names…] [--since REF]|readme [--site DIR] [--repo DIR] [--app APP] [--language CODE] [--vm|--here] [--wait-away MINUTES]|version")
             exit(2)
         }
         // No site: the manifest is the project's own (product-kit#8).
@@ -146,6 +150,15 @@ struct ShotsKit {
                 exit(found.problems.isEmpty ? 0 : 1)
             } catch {
                 print("coverage: \(error)")
+                exit(2)
+            }
+        }
+        // Files only: each picture's alt text and what changed in its window (product-kit#39).
+        if command == "alt" {
+            do {
+                exit(AltPacket.run(names: names, manifest: try loadManifest(site), site: site, repo: repo, since: altSince))
+            } catch {
+                print("alt: \(error)")
                 exit(2)
             }
         }

@@ -39,6 +39,7 @@ poor one; the website is a build output. (NetworkMonitor#334 has the whole decis
 
 | Command | Does |
 |---|---|
+| `docs-kit todo [base] [--json]` | The paragraphs a change asks for: each text it rewords or removes (the quoted strings on its changed lines, `check.needs_docs`), with the page, line and heading that says it and the same heading in each language's copy; and the new text, for its window's page. A small packet, in place of every page (#39: 0.9 KB against 300 KB for one of NetworkMonitor's changes). |
 | `docs-kit check [base]` | Fails when the branch changes what the app says or does (`check.needs_docs`) and no page for users, unless the pull request's description says `No docs needed: <why>`. Reads the description with `gh pr view` (`PR=<n>` names the pull request; `PR_BODY` gives the text instead). |
 | `docs-kit site <site checkout> [commit]` | The website's docs pages, in the site's own template, rendered by GitHub. |
 | `docs-kit wiki <wiki checkout> [commit]` | The wiki: every page, Home, the sidebar and the footer; removes pages whose doc is gone. |

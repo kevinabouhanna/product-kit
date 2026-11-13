@@ -166,6 +166,16 @@ printf 'let c = L("New")\n' >src/new.swift
 expect "a new file counts too" '! PR_BODY="" "$KIT" check base >/dev/null'
 rm src/new.swift && git checkout -q src/app.swift
 
+echo "--- todo: the paragraphs a change asks for (#39)"
+printf 'let a = L("Pause for now")\n' >src/app.swift
+out="$("$KIT" todo base)"
+expect "todo names the heading that says the reworded text, and its copy's" \
+  'grep -q "\"Pause\" (gone or reworded, src/app.swift)" <<<"$out" && grep -q "docs/guide.md:[0-9]* › ## Pause and resume" <<<"$out" && grep -q "docs/fr/guide.md:3 ## Pause et reprise" <<<"$out"'
+expect "and the new text" 'grep -q "\"Pause for now\" (src/app.swift)" <<<"$out"'
+expect "--json says the same" '"$KIT" todo base --json | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(d[\"changed\"][0][\"text\"] != \"Pause\")"'
+git checkout -q src/app.swift
+expect "with nothing changed, it says so" '"$KIT" todo base | grep -q "no text the app shows changed"'
+
 echo "--- vendor"
 expect "--check says when the copy is missing" '! "$KIT" vendor --check >/dev/null'
 "$KIT" vendor >/dev/null
