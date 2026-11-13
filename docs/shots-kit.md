@@ -112,6 +112,31 @@ picture's size on the page and copies it to the README. `check`, `update`, `tree
 work; looks, crops and clickable areas are the macOS driver's. A shot's picture in another
 language goes in that language's folder (`languages[].assets`, in place of `shots.media`).
 
+## iPhone and iPad (#43)
+
+product-kit brings a driver for an iPhone or iPad app, in the simulator:
+
+```json
+{"driver": {"command": ["product-kit", "driver", "ios-simulator", "--app", "build/App.app", "--bundle", "com.me.App"],
+            "build": ["make", "simulator-app"]},
+ "languages": [{"code": "ar", "page": "ar/index.html", "assets": "docs/images/ar/"}],
+ "shots": [
+  {"name": "home", "file": "docs/images/home.png", "device": "iPhone 17 Pro Max", "open": ["-screen", "home"],
+   "data": [{"from": "AXGroup#rows"}]},
+  {"name": "home-ipad", "file": "docs/images/home-ipad.png", "device": "iPad Pro 13-inch (M5)", "open": []}]}
+```
+
+For each shot it uses the project's own simulator of that device type (shared-mac's `mac-sim`,
+booted by `simctl`, so no window shows on anyone's screen), installs the app when it changed,
+sets the language and region (`-AppleLanguages`, `-AppleLocale`: an Arabic or Hebrew app is
+mirrored, as on a phone), light or dark (`appearance`), and Apple's status bar (9:41, full
+battery and signal), opens the app with `open`, taps `click`'s elements, reads the screen's
+elements through the simulator's accessibility (AXe: on PATH, or the copy XcodeBuildMCP brings),
+and takes the picture (`simctl io screenshot`), at the device's own size: one shot per size the
+App Store or the site wants. `Role#identifier` names an element by its accessibility identifier,
+the same in every language. An app that draws its own pictures in a test (SwiftUI's
+`ImageRenderer`) needs no simulator at all: `render`, as for a Mac app.
+
 ## The files
 
 `shots/*.swift`, in the order `shots/SOURCES` lists: `core.swift` (the config, the manifest,
@@ -247,12 +272,12 @@ On the site, or in the project's checkout when it has none. NetworkMonitor's (on
 |---|---|
 | `app`, `bundle` | The installed app and its bundle id. Not with `render`. |
 | `render` | Pictures the project draws itself: `build` and `command`, `{out}` for the folder. Its shots have only `name`, `file` and `render`. |
-| `driver` | A program of the project's choosing that opens each screen: `command`, and `build` (#35). `app` and `bundle` are then optional, and a shot needs only `name` (above). |
+| `driver` | A program that opens each screen: `command`, and `build` (#35); product-kit's own: `product-kit driver ios-simulator` (#43). `app` and `bundle` are then optional, and a shot needs only `name` (above). |
 | `shots` | One per picture or checked window: `name`, `file` (the picture, from the site's root; none for a window only checked), `open` (launch arguments), `window` (its title, or an element such as `AXPopover`), `click`, `scroll`, `waitFor`, `when` (taken only when that shot's window changed: a costly one), `skipIf`, `ignore`, `data` (regions that are data: `from`, `until`, `skip`, `optional`), `crop`, `areas` (clickable areas on the page: `match`, `element`, `parent`, `pad`, `h`), `always`. |
 | `assets` | Every other image, GIF and video the site uses: `file`, and `shows` (shots) with `made` (the app version), or `none` (why it shows no window), and `stale` (the issue its remake waits on). `in`: `repo` for the README's and the docs' files, when the site is on the same branch. `how` it's made: `taken`, `drawn`, `recorded`, `built` or `hand` (the default for one that `shows` windows). |
 | `languages` | Other languages the site has a page in: `code`, `page`, `assets` (its pictures' folder), `specs` (labels the app's table can't translate). Each shot is taken again in each. |
 
-An element is written `Role:label`, `Role:~part of a label` or `Outer>Inner`.
+An element is written `Role:label`, `Role:~part of a label`, `Role#identifier` (#43) or `Outer>Inner`.
 
 ## A new project
 
@@ -279,5 +304,5 @@ checked against NetworkMonitor's pictures when the tool changes.
 
 ## Not yet
 
-The drivers product-kit brings itself for an iPhone app (#43) and a web view or page (#46);
-until then a project brings its own (`driver`).
+The driver product-kit brings for a web view or page (#46); until then a project brings its
+own (`driver`).

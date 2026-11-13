@@ -1,0 +1,189 @@
+#!/usr/bin/env python3
+"""shots-kit's driver for an iPhone or iPad app, in the simulator, out of sight (product-kit#43).
+
+  product-kit driver ios-simulator --app build/App.app --bundle com.me.App [--device "iPhone 17"]
+
+`product-kit driver ios-simulator …` runs it (drivers/ in product-kit). shots-kit runs it once per picture and language (the manifest's `driver`, product-kit#35), with a
+request on its input: {"action": "read"|"take", "shot": {...}, "language": "fr", "picture": "…"}.
+It opens the shot's screen in the project's own simulator (shared-mac's `mac-sim`, booted by simctl,
+so no window shows), and answers with the screen's elements, read through the simulator's
+accessibility (AXe), writing the picture for a take.
+
+A shot's own keys, besides shots-kit's (`name`, `file`, `data`, `ignore`):
+  open        launch arguments: ["-screen", "settings"]
+  click       elements to tap, in order, once it's open: "AXButton:Share"
+  device      the simulator's device type, for a picture at another size: "iPad Pro 13-inch (M5)"
+  appearance  "light" (the default) or "dark"
+Every picture shows Apple's status bar: 9:41, full battery, full signal.
+"""
+
+import json
+import os
+import pathlib
+import shutil
+import subprocess
+import sys
+import time
+
+DEFAULT_DEVICE = None
+
+
+def fail(text: str, status: int = 1):
+    print(f"ios-simulator: {text}", file=sys.stderr)
+    sys.exit(status)
+
+
+def run(*argv: str, env=None, timeout=300) -> str:
+    r = subprocess.run(argv, capture_output=True, text=True, env=env, timeout=timeout)
+    if r.returncode != 0:
+        fail(f"{' '.join(argv[:3])}…: {(r.stderr or r.stdout).strip()[-600:]}")
+    return r.stdout
+
+
+def find_axe() -> str:
+    """AXe, which reads the simulator's accessibility: on PATH, or the copy XcodeBuildMCP brings."""
+    if os.environ.get("PRODUCT_KIT_AXE"):
+        return os.environ["PRODUCT_KIT_AXE"]
+    found = shutil.which("axe")
+    if found:
+        return found
+    for path in sorted(pathlib.Path("~/.npm/_npx").expanduser().glob("*/node_modules/xcodebuildmcp/bundled/axe")):
+        return str(path)
+    fail("needs AXe to read the simulator's screen: `brew install cameroncooke/axe/axe`")
+
+
+def simulator(repo: pathlib.Path, device: str | None) -> str:
+    """The project's own simulator for that device type, booted with no window (mac-sim)."""
+    if not shutil.which("mac-sim"):
+        fail("needs mac-sim (the shared-mac plugin) for a simulator of its own")
+    # Each device type its own simulator, kept while the folder that names it is there:
+    # the project's, or PRODUCT_KIT_SIMULATORS' (the tests', so a run reuses the last one's).
+    home = pathlib.Path(os.environ["PRODUCT_KIT_SIMULATORS"]) if os.environ.get("PRODUCT_KIT_SIMULATORS") \
+        else repo / ".claude" / "simulators"
+    place = home / (device or "default").replace("/", "-")
+    place.mkdir(parents=True, exist_ok=True)
+    env = {**os.environ, "MAC_SIM_WORKTREE": str(place)}
+    if device:
+        env["MAC_SIM_TYPE"] = device
+    return run("mac-sim", "udid", env=env).strip().splitlines()[-1]
+
+
+def install(udid: str, app: pathlib.Path, bundle: str) -> None:
+    """Installs the app when it's new to this simulator or has changed since."""
+    stamp = str(max(p.stat().st_mtime_ns for p in app.rglob("*") if p.is_file()))
+    cache = pathlib.Path("~/Library/Caches/product-kit/ios-simulator").expanduser() / f"{udid}.json"
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    known = json.loads(cache.read_text()) if cache.exists() else {}
+    if known.get(bundle) == [str(app), stamp]:
+        return
+    run("xcrun", "simctl", "install", udid, str(app))
+    known[bundle] = [str(app), stamp]
+    cache.write_text(json.dumps(known))
+
+
+def describe(axe: str, udid: str) -> dict:
+    """The screen's elements, read until they've settled: twice the same, a moment apart."""
+    last, tries = None, 0
+    for _ in range(20):
+        r = subprocess.run([axe, "describe-ui", "--udid", udid], capture_output=True, text=True, timeout=120)
+        if r.returncode != 0:
+            # The first read after a boot can time out while the simulator wakes up.
+            tries += 1
+            if tries > 3:
+                fail(f"AXe couldn't read the screen: {(r.stderr or r.stdout).strip()[-300:]}")
+            time.sleep(2)
+            continue
+        now = json.loads(r.stdout)
+        if now == last:
+            break
+        last = now
+        time.sleep(0.8)
+    if not last:
+        fail("the screen read as nothing")
+    return last[0] if isinstance(last, list) else last
+
+
+def element(node: dict) -> dict:
+    """AXe's element as shots-kit reads one: the Mac's accessibility names."""
+    f = node.get("frame") or {}
+    out = {"role": node.get("role") or "AXUnknown"}
+    for key, theirs in (("subrole", "subrole"), ("title", "title"), ("description", "AXLabel"),
+                        ("value", "AXValue"), ("identifier", "AXUniqueId"), ("help", "help")):
+        if node.get(theirs) not in (None, ""):
+            out[key] = node[theirs]
+    if f:
+        out["frame"] = [f.get("x", 0), f.get("y", 0), f.get("width", 0), f.get("height", 0)]
+    out["children"] = [element(c) for c in node.get("children") or []]
+    return out
+
+
+def matches(node: dict, spec: str) -> bool:
+    """`Role`, `Role:label`, `Role:~part`, `Role#identifier`: as shots-kit reads a spec."""
+    head, _, label = spec.partition(":")
+    role, _, ident = head.partition("#")
+    if node.get("role") != role or (ident and node.get("identifier") != ident):
+        return False
+    if not label:
+        return True
+    labels = [str(node[k]) for k in ("title", "description", "value") if node.get(k) not in (None, "")]
+    return any(label[1:] in t for t in labels) if label.startswith("~") else any(t.startswith(label) for t in labels)
+
+
+def find(node: dict, spec: str) -> dict | None:
+    if ">" in spec:
+        outer, _, inner = spec.partition(">")
+        o = find(node, outer)
+        return next((x for c in (o or {}).get("children", []) if (x := find(c, inner))), None)
+    if matches(node, spec):
+        return node
+    return next((x for c in node.get("children", []) if (x := find(c, spec))), None)
+
+
+def main() -> int:
+    args = sys.argv[1:]
+
+    def option(name, default=None):
+        return args[args.index(name) + 1] if name in args and args.index(name) + 1 < len(args) else default
+
+    request = json.load(sys.stdin)
+    repo = pathlib.Path(request.get("repo") or ".").resolve()
+    app = option("--app")
+    bundle = option("--bundle")
+    if not app or not bundle:
+        fail("usage: ios-simulator --app <App.app> --bundle <bundle id> [--device <type>]", 2)
+    app_path = (repo / app).resolve()
+    if not app_path.exists():
+        fail(f"no app at {app}: build it first (the driver's `build`)")
+    shot = request.get("shot") or {}
+    language = request.get("language") or "en"
+
+    udid = simulator(repo, shot.get("device") or option("--device"))
+    install(udid, app_path, bundle)
+    run("xcrun", "simctl", "ui", udid, "appearance", shot.get("appearance", "light"))
+    run("xcrun", "simctl", "status_bar", udid, "override", "--time", "9:41", "--batteryState", "charged",
+        "--batteryLevel", "100", "--cellularMode", "active", "--cellularBars", "4", "--wifiBars", "3")
+    region = language.replace("-", "_") if "_" in language or len(language) > 2 else language
+    run("xcrun", "simctl", "launch", "--terminate-running-process", udid, bundle,
+        *shot.get("open", []), "-AppleLanguages", f"({language})", "-AppleLocale", region)
+    axe = find_axe()
+    screen = element(describe(axe, udid))
+    for spec in shot.get("click") or []:
+        target = find(screen, spec)
+        if not target or "frame" not in target:
+            fail(f"nothing matches {spec} to tap")
+        x, y, w, h = target["frame"]
+        run(axe, "tap", "-x", str(int(x + w / 2)), "-y", str(int(y + h / 2)), "--udid", udid)
+        time.sleep(1)
+        screen = element(describe(axe, udid))
+    if request.get("action") == "take":
+        picture = request.get("picture")
+        if not picture:
+            fail("a take needs the picture's path")
+        pathlib.Path(picture).parent.mkdir(parents=True, exist_ok=True)
+        run("xcrun", "simctl", "io", udid, "screenshot", "--type=png", picture)
+    print(json.dumps({"window": screen}))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

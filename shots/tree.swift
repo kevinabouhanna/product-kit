@@ -45,7 +45,11 @@ func labels<E: UIElement>(_ element: E) -> [String] {
 /// inside an Outer.
 func matches<E: UIElement>(_ element: E, _ spec: String) -> Bool {
     let parts = spec.split(separator: ":", maxSplits: 1).map(String.init)
-    guard role(element) == parts[0] else { return false }
+    // `Role#identifier`: the element's accessibility identifier, the same in every language
+    // (an iPhone app's usual way to name what tests find, product-kit#43).
+    let head = parts[0].split(separator: "#", maxSplits: 1).map(String.init)
+    guard role(element) == head[0] else { return false }
+    if head.count == 2, text(element, kAXIdentifierAttribute) != head[1] { return false }
     guard parts.count == 2 else { return true }
     // `Role:~text` matches text anywhere in the label, for a line that starts
     // with a number.

@@ -26,6 +26,7 @@
   product-kit facts [--write] [--site DIR] [--json]
                               the version, requirements, links and pitch, written once in the
                               config and kept the same in every page that marks them
+  product-kit driver <name> …  a driver product-kit brings for shots-kit: ios-simulator
   product-kit gap "<what>" --why "<why>"
                               puts something product-kit couldn't do here in its Inbox
   product-kit publish [--dry-run]
@@ -1134,6 +1135,13 @@ def main(argv: list[str]) -> int:
         return facts_run(rest)
     if command == "init":
         return init(rest)
+    if command == "driver":
+        # A driver product-kit brings for shots-kit (#43): drivers/<name>.
+        drivers = KIT / "drivers"
+        if not rest or not (drivers / rest[0]).is_file():
+            known = ", ".join(sorted(f.name for f in drivers.iterdir())) if drivers.is_dir() else "none"
+            fail(f"usage: product-kit driver <name> [options]; the drivers: {known}")
+        os.execvp("python3", ["python3", "-I", str(drivers / rest[0]), *rest[1:]])
     if command == "gap":
         return gap(rest)
     if command == "publish":
