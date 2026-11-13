@@ -192,9 +192,14 @@ def read(query: str, fields: dict) -> dict:
         nodes = []
         for number, item in B["items"].items():
             i = S["issues"].get(number)
-            nodes.append({"id": item["id"], "content": {"number": int(number), "state": i["state"] if i else "CLOSED",
-                                                         "repository": {"nameWithOwner": S["repo"]}},
+            nodes.append({"id": item["id"], "type": "ISSUE",
+                          "content": {"number": int(number), "state": i["state"] if i else "CLOSED",
+                                      "repository": {"nameWithOwner": S["repo"]}},
                           "v_status": value_of(item, "Status")})
+        for item_id, d in B.get("drafts", {}).items():
+            nodes.append({"id": item_id, "type": "DRAFT_ISSUE", "content": {
+                "title": d["title"], "body": d.get("body", ""), "createdAt": d["createdAt"],
+                "creator": {"login": d.get("by", "someone")}}, "v_status": None})
         return {"node": {"items": {"pageInfo": {"hasNextPage": False, "endCursor": None}, "nodes": nodes}}}
     if query.startswith("query { nodes(ids:"):
         ids = re.findall(r'"(I\d+)"', query)
@@ -230,8 +235,17 @@ def mutate(query: str) -> dict:
                 return {"errors": [{"message": "Issue may not contain duplicate sub-issues"}]}
             child["parent"] = by_id(v["issueId"])["number"]
             out[alias] = {"clientMutationId": None}
+        elif name == "convertProjectV2DraftIssueItemToIssue":
+            d = B["drafts"].pop(v["itemId"])
+            number = max([int(n) for n in S["issues"]] + [0]) + 1
+            S["issues"][str(number)] = {"id": f"I{number}", "number": number, "title": d["title"], "state": "OPEN",
+                                        "body": d.get("body", ""), "labels": [], "milestone": None, "parent": None}
+            B["items"][str(number)] = {"id": v["itemId"], "values": {}}
+            out[alias] = {"item": {"id": v["itemId"], "content": {"id": f"I{number}", "number": number}}}
         elif name == "updateIssue":
             i = by_id(v["id"])
+            if "title" in v:
+                i["title"] = v["title"]
             if "milestoneId" in v:
                 i["milestone"] = next(m["title"] for m in S["milestones"] if m["id"] == v["milestoneId"])
             if "body" in v:
@@ -268,6 +282,8 @@ def mutate(query: str) -> dict:
         elif name == "updateProjectV2View":
             view = next(x for x in B["views"] if x["id"] == v["viewId"])
             view["filter"] = v["filter"]
+            # As GitHub seems to: a filter alone can put a view back to a board.
+            view["layout"] = v.get("layout", "BOARD_LAYOUT")
             out[alias] = {"clientMutationId": None}
         else:
             raise SystemExit(f"fake-github: a mutation it doesn't know: {name}")
@@ -290,8 +306,9 @@ def rest(method: str, path: str, body: dict) -> dict:
         return {"node_id": m["id"], "number": number}
     if path.endswith("/views"):
         view = {"id": new_id("PVTV_"), "number": len(B["views"]) + 1, "name": body["name"],
-                "filter": body.get("filter"), "layout": body["layout"], "sort_by": body.get("sort_by"),
-                "group_by": body.get("group_by"), "vertical_group_by": body.get("vertical_group_by")}
+                "filter": body.get("filter"), "layout": body["layout"].upper() + "_LAYOUT", "sort_by": body.get("sort_by"),
+                "group_by": body.get("group_by"), "vertical_group_by": body.get("vertical_group_by"),
+                "visible_fields": body.get("visible_fields")}
         B["views"].append(view)
         save()
         return view

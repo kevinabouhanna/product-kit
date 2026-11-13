@@ -223,8 +223,13 @@ state = {
             item(14, Order=3, Horizon="Later", Status="Todo"),
             item(5, Status="Todo"),
         ]),
-        "views": [{"id": "V1", "number": 1, "name": "Issues", "filter": "no:parent-issue"},
-                  {"id": "V2", "number": 2, "name": "Roadmap", "filter": "no:parent-issue"}],
+        "views": [{"id": "V1", "number": 1, "name": "Issues", "filter": "no:parent-issue", "layout": "BOARD_LAYOUT"},
+                  {"id": "V2", "number": 2, "name": "Roadmap", "filter": "no:parent-issue", "layout": "ROADMAP_LAYOUT"}],
+        "drafts": {
+            "PVTI_d2": {"title": "Wake me with music", "body": "Kevin: a song instead of the alarm.\nOn weekdays.",
+                        "createdAt": "2026-11-12T09:00:00Z", "by": "kevin"},
+            "PVTI_d1": {"title": "A dark mode", "body": "", "createdAt": "2026-11-10T09:00:00Z", "by": "kevin"},
+        },
     },
 }
 json.dump(state, open(sys.argv[1], "w"), indent=1)
@@ -291,7 +296,10 @@ expect "then the items by Horizon, each with its phase and phase issue" \
   'grep -qF "| 2 | #10 First plan | [Phase 1: One](https://github.com/someone/thing/blob/main/docs/phases/1-one.md) #$p1 |" <<<"$body" && grep -q "^## Now" <<<"$body"'
 expect "and the finished phases last" 'grep -A2 "^## Done" <<<"$body" | grep -qF "[Phase 0: Start]"'
 expect "the plan's views: made, or their filters put right" \
-  '[ "$(gh_state "sorted((v[\"name\"], v[\"filter\"]) for v in b[\"views\"])")" = "[('"'"'In order'"'"', '"'"'is:open level:Item,Step'"'"'), ('"'"'Issues'"'"', '"'"'no:parent-issue'"'"'), ('"'"'Now · Next · Later'"'"', '"'"'is:open level:Item'"'"'), ('"'"'Roadmap'"'"', '"'"'is:open level:Phase,Item'"'"')]" ]'
+  '[ "$(gh_state "sorted((v[\"name\"], v[\"filter\"]) for v in b[\"views\"])")" = "[('"'"'Ideas'"'"', '"'"'is:draft'"'"'), ('"'"'In order'"'"', '"'"'is:open level:Item,Step'"'"'), ('"'"'Issues'"'"', '"'"'no:parent-issue'"'"'), ('"'"'Now · Next · Later'"'"', '"'"'is:open level:Item'"'"'), ('"'"'Roadmap'"'"', '"'"'is:open level:Phase,Item'"'"')]" ]'
+expect "a view whose filter is put right keeps its layout" '[ "$(gh_state "[v[\"layout\"] for v in b[\"views\"] if v[\"name\"] == \"Roadmap\"][0]")" = "ROADMAP_LAYOUT" ]'
+expect "the Ideas view: a table of the drafts, by title" \
+  '[ "$(gh_state "[(v[\"layout\"], v[\"visible_fields\"]) for v in b[\"views\"] if v[\"name\"] == \"Ideas\"]")" = "[('"'"'TABLE_LAYOUT'"'"', [1])]" ]'
 expect "the board view's columns are the Horizon, sorted by Order" \
   '[ "$(gh_state "[(v[\"vertical_group_by\"], v[\"sort_by\"]) for v in b[\"views\"] if v[\"name\"].startswith(\"Now\")]")" = "[([4], [[3, '"'"'asc'"'"']])]" ]'
 index="$(cat docs/phases/README.md)"
@@ -304,6 +312,7 @@ expect "items by Order, those with none last; a phase with no page by name; Done
 expect "issues are read a page at a time" 'grep -q "read the plan after=3" "$G/github.log"'
 out="$("$KIT" plan check 2>&1)"; status=$?
 expect "then check passes" '[ $status -eq 0 ] && grep -q "agree" <<<"$out"'
+expect "and says, without failing, that ideas are waiting" 'grep -qF "2 ideas waiting in the Ideas view: \`docs-kit plan ideas\`" <<<"$out"'
 [ $status -eq 0 ] || echo "$out"
 expect "and sync again changes nothing" '"$KIT" plan sync | grep -q "nothing to change"'
 git add -A && git commit -qm synced
@@ -311,6 +320,33 @@ git add -A && git commit -qm synced
 plan_fails() { # plan_fails <what it should say>
   out="$("$KIT" plan check 2>&1)"; [ $? -ne 0 ] && grep -qF "$1" <<<"$out" && ! grep -q Traceback <<<"$out"
 }
+
+echo "--- plan: ideas"
+out="$("$KIT" plan ideas)"
+expect "plan ideas lists them, oldest first, with their notes and item ids" \
+  '[ "$(grep -E "^[0-9]\. " <<<"$out" | tr "\n" ";")" = "1. A dark mode;2. Wake me with music;" ] && grep -qF "   > On weekdays." <<<"$out" && grep -q "item PVTI_d2" <<<"$out" && grep -q "views/" <<<"$out"'
+expect "--json too" '[ "$("$KIT" plan ideas --json | jq -r ".[0].item")" = PVTI_d1 ]'
+printf '## Why\n\n> Kevin: a song instead of the alarm.\n\n## What\n\nMusic at the wake-up time.\n' >"$TMP/spec.md"
+expect "an item needs a Horizon" '{ "$KIT" plan ideas --take PVTI_d2 --phase "Phase 1: One" 2>&1 || true; } | grep -q "an item needs --horizon"'
+expect "an id that isn't an idea is said plainly" '{ "$KIT" plan ideas --take PVTI_nope --phase "Phase 1: One" --horizon Now 2>&1 || true; } | grep -q "no idea with the item id"'
+out="$("$KIT" plan ideas --take PVTI_d2 --phase "Phase 1: One" --horizon Next --order 6 --set Track=Hands --body-file "$TMP/spec.md" --title "Wake up to music" 2>&1)"
+n="$(gh_state 'max(int(x) for x in i)')"
+expect "--take makes the idea an issue on the board, its spec the description" \
+  '[ "$(gh_state "(i[\"$n\"][\"title\"], i[\"$n\"][\"body\"].splitlines()[0], \"PVTI_d2\" in b[\"drafts\"])")" = "('"'"'Wake up to music'"'"', '"'"'## Why'"'"', False)" ]'
+expect "an item of its phase, in its milestone, with its Level, Horizon, Order and fields" \
+  '[ "$(gh_state "(i[\"$n\"][\"parent\"], i[\"$n\"][\"milestone\"], [b[\"items\"][\"$n\"][\"values\"].get(k) for k in (\"Level\", \"Horizon\", \"Order\", \"Track\")])")" = "($p1, '"'"'Phase 1: One'"'"', ['"'"'Item'"'"', '"'"'Next'"'"', 6.0, '"'"'Hands'"'"'])" ]'
+expect "it says where it went, and that the page should mention it" \
+  'grep -qF "is now #$n Wake up to music, an item of #$p1 Phase 1: One" <<<"$out" && grep -qF "Now say on docs/phases/1-one.md what #$n is" <<<"$out"'
+expect "plan check then asks for the mention" 'plan_fails "doesn'"'"'t mention #$n Wake up to music"'
+printf 'Next: #%s.\n' "$n" >>docs/phases/1-one.md
+"$KIT" plan ideas --take PVTI_d1 --phase "Phase 1: One" --parent 10 >/dev/null
+m="$(gh_state 'max(int(x) for x in i)')"
+expect "with --parent, a step of that item: it copies the item's Horizon" \
+  '[ "$(gh_state "(i[\"$m\"][\"parent\"], b[\"items\"][\"$m\"][\"values\"].get(\"Level\"), b[\"items\"][\"$m\"][\"values\"].get(\"Horizon\"))")" = "(10, '"'"'Step'"'"', '"'"'Now'"'"')" ]'
+out="$("$KIT" plan check 2>&1)"; status=$?
+expect "no ideas left, and check passes" '[ $status -eq 0 ] && ! grep -q "ideas waiting" <<<"$out"'
+[ $status -eq 0 ] || echo "$out"
+git add -A && git commit -qm ideas
 gh_set() { python3 -I -c 'import json,sys; p=sys.argv[1]; s=json.load(open(p)); i=s["issues"]; b=s["board"]; exec(sys.argv[2]); json.dump(s, open(p, "w"))' "$G/github.json" "$1"; }
 
 gh_set 'i["20"] = {"id": "I20", "number": 20, "title": "A new idea", "state": "OPEN", "milestone": "Phase 1: One", "parent": None, "labels": [], "body": ""}'

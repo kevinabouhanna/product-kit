@@ -1,6 +1,6 @@
 ---
 name: docs-kit
-description: How a project's docs work when it has a .product-kit.json (or .docs-kit.json), starting with its plan - docs/PLAN.md and a page per phase kept the same as GitHub (one root plan issue, a phase issue per phase, items and steps as sub-issues, milestones, the project board's Level, Order and Horizon) by docs-kit plan init, sync and check; then docs/ as the one source, with the website's docs pages and the GitHub wiki built from it, never edited. Use at the start of every new project (plan init), in every session that changes the plan or roadmap (a new item or issue, a phase finished, a new order or horizon: plan sync, then plan check), when an issue isn't in the plan, when a change adds or changes what an app says or does (docs-check asks for the docs in the same pull request), when writing or moving a docs page or heading, when publishing the website's docs (with a release), when linking from an app into its docs, or when setting docs up in a new project.
+description: How a project's docs work when it has a .product-kit.json (or .docs-kit.json), starting with its plan - docs/PLAN.md and a page per phase kept the same as GitHub (one root plan issue, a phase issue per phase, items and steps as sub-issues, milestones, the project board's Level, Order and Horizon) by docs-kit plan init, sync and check; then docs/ as the one source, with the website's docs pages and the GitHub wiki built from it, never edited. Use at the start of every new project (plan init), when the owner says to scan the ideas (plan ideas, then --take each with a spec), in every session that changes the plan or roadmap (a new item or issue, a phase finished, a new order or horizon: plan sync, then plan check), when an issue isn't in the plan, when a change adds or changes what an app says or does (docs-check asks for the docs in the same pull request), when writing or moving a docs page or heading, when publishing the website's docs (with a release), when linking from an app into its docs, or when setting docs up in a new project.
 ---
 
 # docs-kit: one source for the docs
@@ -50,6 +50,14 @@ Next, Later) are set on items, and steps copy them.
 - Never edit the root issue's description or the index below its first `## `: they're written.
 - GitHub can't move a board's views by API: tell the owner to drag **Now · Next · Later** to
   the first tab once.
+- **Ideas:** the owner adds ideas by hand as drafts in the board's **Ideas** view (+ Add item,
+  a title, an optional note); `plan check` mentions them and never fails on them. When the owner
+  says "scan the ideas" (or the like): `docs-kit plan ideas`; write a spec per idea (Why, with
+  the owner's note quoted; What; Done when), asking only where the intent is genuinely unclear;
+  take each in with `docs-kit plan ideas --take <item> --phase "<milestone>" --horizon <H>
+  --order <N> --body-file <spec.md>` (or `--parent <item>` for a step; `--set Field=value`);
+  mention each new item on its phase's page; `docs-kit plan check`; then tell the owner where
+  each went. Never take an idea in unasked.
 
 The reference is `docs/plan.md` in product-kit.
 
