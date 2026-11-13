@@ -129,8 +129,11 @@ def main(argv: list[str]) -> int:
                 remade.append(out)
             except (RuntimeError, subprocess.TimeoutExpired, OSError) as e:
                 failed.append(f"{out}: {e}")
-        if not dry and newest and not any(f.startswith(file) for f in failed):
-            asset["made"] = newest
+        # Made now from the app as its windows' records are: their own version, not the one a
+        # hand-made copy was last remade from (`.made.txt`).
+        current = max((v for v in (versions.get(f"{w}.txt") for w in shows) if v), key=parts, default=newest)
+        if not dry and current and not any(f.startswith(file) for f in failed):
+            asset["made"] = current
             asset.pop("stale", None)
             changed = True
     if changed:
