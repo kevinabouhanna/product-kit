@@ -181,13 +181,73 @@ rm "$DP/shots/shots.json"
 expect "no manifest and no site: it says where to put one" '(cd "$DP" && sk coverage) | grep -q "put it in the project.s checkout"'
 
 echo "--- vendor"
-expect "vendor copies the source to Scripts/shots-kit.swift" '(cd "$APP" && "$KIT" vendor >/dev/null) && cmp -s "$APP/Scripts/shots-kit.swift" "$(dirname "$KIT")/../shots/shots-kit.swift"'
+expect "vendor copies the source to Scripts/shots-kit.swift" '(cd "$APP" && "$KIT" vendor >/dev/null) && "$KIT" source | cmp -s - "$APP/Scripts/shots-kit.swift"'
 expect "vendor --check says it's this copy" '(cd "$APP" && "$KIT" vendor --check) | grep -q "is this copy"'
 echo "// changed" >>"$APP/Scripts/shots-kit.swift"
 expect "vendor --check fails on another copy" '! (cd "$APP" && "$KIT" vendor --check >/dev/null)'
 expect "without its own rules, the project gets product-kit's beside the tool" 'cmp -s "$APP/Scripts/AccessibilityAudit.swift" "$(dirname "$KIT")/../shots/AccessibilityAudit.swift"'
 (cd "$APP" && "$KIT" vendor >/dev/null); echo "// changed" >>"$APP/Scripts/AccessibilityAudit.swift"
 expect "vendor --check fails on another copy of the rules" '(cd "$APP" && sk vendor --check) | grep -q "AccessibilityAudit.swift isn.t this copy"'
+expect "the one file it vendors builds on its own" \
+  '"$KIT" source >"$TMP/one.swift" && swiftc -parse-as-library "$TMP/one.swift" "$(dirname "$KIT")/../shots/AccessibilityAudit.swift" -o "$TMP/one" 2>/dev/null && [ "$("$TMP/one" version)" = "$("$KIT" version)" ]'
+
+echo "--- a driver of the project's choosing (#35): the core, with no app and no screen"
+DRV="$TMP/driven"; mkdir -p "$DRV/shots" "$DRV/docs/images"
+git -C "$DRV" init -q
+echo '{"repo": "me/driven", "shots": {"media": "docs/images"}}' >"$DRV/.product-kit.json"
+cat >"$DRV/shots/shots.json" <<'EOF'
+{"driver": {"command": ["./driver.sh"]},
+ "languages": [{"code": "fr", "page": "fr/index.html", "assets": "docs/images/fr/"}],
+ "shots": [{"name": "home", "file": "docs/images/home.png",
+            "data": [{"from": "AXList"}], "ignore": ["AXStaticText:Syncing"]}],
+ "assets": [{"file": "docs/images/tour.gif", "shows": ["home"], "made": "1.0"}]}
+EOF
+# The screen the stand-in driver shows: a title, a time, a list of rows, a line that comes and goes.
+screen() { # time, rows, then an extra button's title or nothing
+  local rows="" i; for ((i = 0; i < $2; i++)); do rows+='{"role": "AXStaticText", "value": "Row '"$i"'", "frame": [0, 0, 100, 20]},'; done
+  local extra=""; [ -n "${3:-}" ] && extra=', {"role": "AXButton", "title": "'"$3"'", "frame": [0, 0, 80, 30]}'
+  cat >"$DRV/screen.json" <<EOF
+{"role": "AXWindow", "title": "Home", "frame": [0, 0, 400, 300], "children": [
+  {"role": "AXStaticText", "value": "Updated $1", "frame": [0, 0, 120, 17]},
+  {"role": "AXStaticText", "value": "Syncing…", "frame": [0, 0, 60, 17]},
+  {"role": "AXList", "frame": [0, 0, 380, 200], "children": [${rows%,}]},
+  {"role": "AXCheckBox", "title": "Sync", "value": 1, "frame": [0, 0, 60, 20]}$extra]}
+EOF
+}
+cat >"$DRV/driver.sh" <<'EOF'
+#!/bin/bash
+# A stand-in driver: answers with screen.json, writes a picture for a take, logs each request.
+req="$(cat)"; echo "$req" >>requests.log
+[ -f fail ] && { echo "the simulator isn't booted" >&2; exit 3; }
+[ -f skip ] && { echo '{"skipped": "the screen needs a signed-in account"}'; exit 0; }
+pic="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("picture", ""))' "$req")"
+[ -n "$pic" ] && echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" | base64 -d >"$pic"
+printf '{"window": %s}\n' "$(cat screen.json)"
+EOF
+chmod +x "$DRV/driver.sh"
+d() { (cd "$DRV" && "$KIT" "$@" 2>&1) || true; }
+screen "5:51 PM" 3
+expect "check, with nothing recorded yet, says so" 'd check | grep -q "home: no tree recorded yet"'
+d update >/dev/null
+expect "update records the tree and the picture the driver took, in every language" \
+  '[ -f "$DRV/shots/trees/home.txt" ] && [ -f "$DRV/shots/trees/fr/home.txt" ] && [ -s "$DRV/docs/images/home.png" ] && [ -s "$DRV/docs/images/fr/home.png" ]'
+expect "the driver is told the language and the shot" \
+  'grep -q "\"language\":\"fr\"" "$DRV/requests.log" && grep -q "\"shot\":{\"data\"" "$DRV/requests.log"'
+expect "the tree is masked as an app's: data, a setting's value, what's ignored" \
+  'grep -q "data: AXList AXStaticText" "$DRV/shots/trees/home.txt" && ! grep -q "Syncing" "$DRV/shots/trees/home.txt" && grep -q "value=\"Updated ‹time›\"" "$DRV/shots/trees/home.txt" && ! grep -q "AXCheckBox.*value" "$DRV/shots/trees/home.txt"'
+screen "9:02 AM" 7
+expect "a new time and more rows change nothing" 'out="$(d check)"; grep -q "home: unchanged" <<<"$out" && grep -q "check: no interface changed" <<<"$out"'
+screen "9:02 AM" 7 Share
+expect "a new button is a change, with its diff, and the hand-made GIF that shows it is named" \
+  'out="$(d check --language en)"; grep -q "home: the interface changed" <<<"$out" && grep -q "+ AXButton title=\"Share\"" <<<"$out" && grep -q "docs/images/tour.gif (shows home)" <<<"$out"'
+expect "check exits 1 when something changed" '(cd "$DRV" && "$KIT" check --language en >/dev/null 2>&1); [ $? -eq 1 ]'
+expect "tree prints what the screen reads as" 'd tree home --language en | grep -q "AXButton title=\"Share\""'
+touch "$DRV/fail"
+expect "a driver that fails is named, with what it said" 'd check --language en | grep -q "the driver failed (exit 3):" && d check --language en | grep -q "simulator isn.t booted"'
+rm "$DRV/fail"; touch "$DRV/skip"
+expect "a screen the driver skips says why" 'd check --language en | grep -q "home: skipped, the screen needs a signed-in account"'
+rm "$DRV/skip"
+expect "record needs names" 'd record | grep -q "record: name the"'
 
 [ "$fails" -eq 0 ] && echo "shots-kit: every test passed" || echo "shots-kit: $fails failed"
 exit $((fails > 0))

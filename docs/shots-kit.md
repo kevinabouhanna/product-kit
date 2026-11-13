@@ -1,10 +1,12 @@
 # shots-kit: the pictures
 
-A project's pictures of its macOS app, on its website or only in its README, kept current
+A project's pictures of its app, on its website or only in its README, kept current
 without anyone looking at them, and every image, GIF and video listed with the window it
-shows (#6). It gets them one of two ways: from **the installed app**, whose windows it opens
-and reads on the screen (NetworkMonitor), or **drawn by the project itself**, out of sight,
-from made-up data (claude-profiles-mac, #8). It's the pictures part of
+shows (#6). It gets them one of three ways, each a **driver**: from **the installed Mac app**,
+whose windows it opens and reads on the screen (NetworkMonitor); **drawn by the project
+itself**, out of sight, from made-up data (claude-profiles-mac, #8); or from **a program of
+the project's choosing** that opens each screen and says what it shows (an iPhone app in the
+simulator, a web page, #35). It's the pictures part of
 [product-kit](../README.md): `shots-kit` on PATH, or `product-kit shots …`. It grew out of
 NetworkMonitor's `site-shots` (NetworkMonitor#329 and after), and NetworkMonitor's
 `docs/development.md#website-pictures` has the whole story of how it reads a window.
@@ -69,6 +71,56 @@ folder (`{out}`). Each shot names its `file` and the drawing it comes from (`ren
   "assets": [{"file": "docs/images/logo.png", "none": "the app's icon"}]
 }
 ```
+
+## A driver of the project's choosing
+
+For an app shots-kit can't open itself (an iPhone app, a web view, a web page), the manifest
+names a program that can (#35):
+
+```json
+{"driver": {"command": ["drivers/ios-simulator", "--scheme", "App"], "build": ["make", "app"]},
+ "shots": [{"name": "home", "file": "docs/images/home.png", "data": [{"from": "AXList"}]}]}
+```
+
+`build` runs once per run, in the project's checkout. Then, for each shot and each language,
+`command` runs there with a request on its input:
+
+```json
+{"action": "read", "shot": {…the shot's entry…}, "language": "fr", "repo": "/path/to/project"}
+{"action": "take", "shot": {…}, "language": "en", "picture": "/path/to/docs/images/home.png", "repo": "…"}
+```
+
+It opens the shot's screen (the entry's other keys are its own: arguments, taps, waits), and
+answers on its output with what the screen shows, after writing the picture for a `take`:
+
+```json
+{"window": {"role": "AXWindow", "title": "Home", "frame": [0, 0, 390, 844], "children": [
+  {"role": "AXButton", "title": "Share", "identifier": "share", "frame": [300, 60, 44, 44]}]}}
+```
+
+or `{"skipped": "why"}`. An element has a `role` and any of `subrole`, `title`, `description`,
+`value`, `identifier`, `help`, `frame` (`[x, y, width, height]` in points) and `children`,
+named as the Mac's accessibility names them (`AXButton`, `AXStaticText`, `AXCheckBox`,
+`AXGroup`), so every driver's screens read alike and the manifest's specs mean the same. A
+driver that fails exits with another status than 0, saying why on its error output; each
+request is stopped after 5 minutes, a build after 20.
+
+The core does the rest as for a Mac app: masks the numbers, dates and the project's values,
+leaves out `ignore` and keeps only the roles of `data`, compares with the recorded tree
+(`shots/trees/<name>.txt`, a folder per language), and on `update` records the tree, sets the
+picture's size on the page and copies it to the README. `check`, `update`, `tree` and `record`
+work; looks, crops and clickable areas are the macOS driver's. A shot's picture in another
+language goes in that language's folder (`languages[].assets`, in place of `shots.media`).
+
+## The files
+
+`shots/*.swift`, in the order `shots/SOURCES` lists: `core.swift` (the config, the manifest,
+the masks, the page, the asset check), `tree.swift` (what a screen shows, as masked text, from
+any driver's elements), `macos.swift` (the Mac's accessibility elements, looks, screens,
+launching, the lanes), `render.swift` (drawn by the project), `command.swift` (a driver of the
+project's choosing), `vm.swift` (in a VM), `main.swift` (the commands). `shots-kit` builds them
+together; `shots-kit source` prints them as the one file `vendor` copies into a project, which
+builds on its own.
 
 ## Without a website
 
@@ -179,6 +231,7 @@ On the site, or in the project's checkout when it has none. NetworkMonitor's (on
 |---|---|
 | `app`, `bundle` | The installed app and its bundle id. Not with `render`. |
 | `render` | Pictures the project draws itself: `build` and `command`, `{out}` for the folder. Its shots have only `name`, `file` and `render`. |
+| `driver` | A program of the project's choosing that opens each screen: `command`, and `build` (#35). `app` and `bundle` are then optional, and a shot needs only `name` (above). |
 | `shots` | One per picture or checked window: `name`, `file` (the picture, from the site's root; none for a window only checked), `open` (launch arguments), `window` (its title, or an element such as `AXPopover`), `click`, `scroll`, `waitFor`, `when` (taken only when that shot's window changed: a costly one), `skipIf`, `ignore`, `data` (regions that are data: `from`, `until`, `skip`, `optional`), `crop`, `areas` (clickable areas on the page: `match`, `element`, `parent`, `pad`, `h`), `always`. |
 | `assets` | Every other image, GIF and video the site uses: `file`, and `shows` (shots) with `made` (the app version), or `none` (why it shows no window), and `stale` (the issue its remake waits on). |
 | `languages` | Other languages the site has a page in: `code`, `page`, `assets` (its pictures' folder), `specs` (labels the app's table can't translate). Each shot is taken again in each. |
@@ -203,12 +256,12 @@ drawings made the same every run, `shots-kit check` until every picture is as dr
 
 `tests/test-shots-kit.sh`, run by `tests/run.sh`: it builds, runs `coverage-test`, and checks
 the asset check, the config and vendoring on a made-up project and site, `check` and
-`update` on a made-up project that draws its own pictures, and a run in a VM with a stand-in
+`update` on a made-up project that draws its own pictures, `check`, `update`, `tree` and
+`record` through a stand-in driver (#35), and a run in a VM with a stand-in
 for `mac-vm` (what goes in, what comes back, the config). What needs an app and the screen is
 checked against NetworkMonitor's pictures when the tool changes.
 
 ## Not yet
 
-macOS apps only (a project's own drawings could be anything's), and one Swift file holding both what's the same everywhere (the manifest, the
-asset check, the diffs, the page) and what's macOS's (the Accessibility API, ScreenCaptureKit,
-launching). They separate for iPhone and web views (#35).
+The drivers product-kit brings itself for an iPhone app (#43) and a web view or page (#46);
+until then a project brings its own (`driver`).

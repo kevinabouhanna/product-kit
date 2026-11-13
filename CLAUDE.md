@@ -24,7 +24,7 @@ through without asking. What's particular here:
 - **Install on this Mac:** `claude plugin marketplace update kevinabouhanna && claude plugin
   update product-kit@kevinabouhanna`. New sessions pick it up.
 - **Projects keep copies.** A change to a tool a project vendors (`bin/docs-kit`, `bin/lang-kit`,
-  `shots/shots-kit.swift`) bumps the one version every tool carries (`product-kit bump <version>`;
+  `shots/*.swift`) bumps the one version every tool carries (`product-kit bump <version>`;
   the tests fail when they differ). Once merged and installed, `product-kit vendor --all` opens an
   issue and a pull request in each project that's behind (`product-kit projects` lists them);
   run each project's own CI on it and merge it by that project's rules. Tooling only there: no
