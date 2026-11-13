@@ -7,7 +7,6 @@ Each phase is a milestone on GitHub and a page here; each plan is an issue, in t
 
 | Order | Plan | Phase |
 |---|---|---|
-| 16 | #46 Apps built on web views (home-control), and the website itself checked | [Phase 2: Any Mac or iPhone project](02-any-mac-or-iphone-project.md) |
 | 17 | #47 Prove it: a new project from nothing, and every project current | [Phase 2: Any Mac or iPhone project](02-any-mac-or-iphone-project.md) |
 | 18 | #48 Later: Windows and Android | [Phase 3: Windows and Android](03-windows-and-android.md) |
 
