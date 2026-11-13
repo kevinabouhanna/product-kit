@@ -27,6 +27,7 @@ the interface changed) → videos → publish (README, wiki, website) → native
 | No docs are needed after all | `No docs needed: <why>` in the pull request, then `docs-kit check` again | Pages for developers don't count |
 | A window a picture shows changes | After the release is installed: `shots-kit check`, then `shots-kit update` | `shots-kit alt <names> --since <ref>`: rewrite each alt text from the packet |
 | A new image, GIF or video | List it: `shots-kit coverage` until it passes | It names the windows it shows, or why none |
+| The website changed | `product-kit site check` | Every page, every language, a phone's width and a computer's |
 | Before a pull request | `product-kit status` | Do each `✗`; the `·` lines are to look at |
 | A release | `product-kit status --release`: the review, the site's docs, the pictures | Then `shots-kit videos`: scripted videos are remade; hand-made ones only when asked |
 | A version, a requirement, the pitch or a feature list changes | Change `facts` in the config, then `product-kit facts --write` | Never edit a marked spot by hand |
