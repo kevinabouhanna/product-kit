@@ -236,5 +236,50 @@ expect "a language written right to left gets its README marked, and a site fold
 mkdir -p "$TMP/unknown"; git -C "$TMP/unknown" init -q
 expect "a project it can't tell the kind of is asked" 'out="$(cd "$TMP/unknown" && python3 -I "$KIT" init --pitch x --site none 2>&1)"; grep -q "what kind of project is it" <<<"$out"'
 
+echo "--- release notes and the App Store page, in every language (#45)"
+STO="$TMP/store"; mkdir -p "$STO/ReleaseNotes/ar" "$STO/fastlane/metadata/en-US" "$STO/fastlane/metadata/ar-SA" "$STO/store/captions" "$STO/docs/images/ar"
+git -C "$STO" init -q
+cat >"$STO/.product-kit.json" <<'EOF'
+{"repo": "me/store", "languages": {"ar": {"name": "العربية"}},
+ "store": {"locales": {"en": "en-US", "ar": "ar-SA"},
+           "screenshots": {"frames": [{"picture": "docs/images/home.png", "pictures": {"ar": "docs/images/ar/home.png"},
+                                       "caption": "home", "size": "iphone-6.9"}]}}}
+EOF
+printf -- '- **Sharing** from the menu (#5)\n- **Faster** start (#6)\n' >"$STO/ReleaseNotes/1.0.md"
+printf -- '- **المشاركة** من القائمة (#5)\n' >"$STO/ReleaseNotes/ar/1.0.md"
+n() { (cd "$STO" && python3 -I "$KIT" notes "$@" 2>&1) || true; }
+expect "notes --check finds a language's notes short of the English" 'n --check 1.0 | grep -q "ReleaseNotes/ar/1.0.md has 1 points, the English 2"'
+printf -- '- **المشاركة** من القائمة (#5)\n- **أسرع** في البدء (#6)\n' >"$STO/ReleaseNotes/ar/1.0.md"
+expect "and passes with every language's" 'n --check 1.0 | grep -q "1.0.s notes are there in en, ar"'
+for d in en-US ar-SA; do echo "A tally" >"$STO/fastlane/metadata/$d/description.txt"; done
+echo "Tally: count what you count, all day long" >"$STO/fastlane/metadata/en-US/name.txt"
+echo "عداد" >"$STO/fastlane/metadata/ar-SA/name.txt"
+echo "count,tally" >"$STO/fastlane/metadata/en-US/keywords.txt"
+st() { (cd "$STO" && python3 -I "$KIT" store "$@" 2>&1) || true; }
+out="$(st check)"
+expect "store check names text over Apple's limits, and what's missing" \
+  'grep -q "en-US/name.txt is 41 characters, over Apple.s 30" <<<"$out" && grep -q "ar-SA/keywords.txt is missing" <<<"$out"'
+echo "Tally" >"$STO/fastlane/metadata/en-US/name.txt"; echo "عد" >"$STO/fastlane/metadata/ar-SA/keywords.txt"
+expect "and passes once it's whole" 'st check | grep -q "the App Store page is whole in en, ar"'
+if ls ~/Library/Caches/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-*/chrome-headless-shell >/dev/null 2>&1; then
+  python3 - "$STO/docs/images/home.png" "$STO/docs/images/ar/home.png" <<'EOF'
+import struct, sys, zlib
+def png(path, w, h, rgb):
+    raw = b"".join(b"\x00" + bytes(rgb) * w for _ in range(h))
+    chunk = lambda t, d: struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xffffffff)
+    open(path, "wb").write(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
+                           + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+png(sys.argv[1], 300, 650, (240, 240, 245)); png(sys.argv[2], 300, 650, (230, 235, 250))
+EOF
+  echo '{"home": "Count what you count"}' >"$STO/store/captions/en.json"
+  echo '{"home": "عُدّ ما تعدّه"}' >"$STO/store/captions/ar.json"
+  out="$(st shots)"
+  expect "store shots draws each picture with its caption, per language, at Apple's size" \
+    'grep -q "drew 2 screenshots" <<<"$out" && dims="$(sips -g pixelWidth -g pixelHeight "$STO/fastlane/screenshots/ar-SA/01_iphone-6.9.png")" && grep -q "pixelWidth: 1320" <<<"$dims" && grep -q "pixelHeight: 2868" <<<"$dims"'
+  expect "and they pass the check" 'st check | grep -q "whole in en, ar"'
+else
+  echo "  (store shots: skipped, no headless Chrome)"
+fi
+
 [ "$fails" -eq 0 ] && echo "product-kit: every test passed" || echo "product-kit: $fails failed"
 exit $((fails > 0))

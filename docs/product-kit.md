@@ -167,3 +167,38 @@ It writes, for a new project:
 **An existing project is the owner's**: with a config already, `init` changes nothing it has. It
 says what it lacks, and `--fill` writes those missing files; its config is never rewritten
 (`doctor` says which keys matter). `--dry-run` says what it would do.
+
+## Release notes, in every language (#45)
+
+`product-kit notes [<tag>]` lists what was merged since the last release (or `<tag>`), each pull
+request with the issues it closed, leaving out what's tooling only (nothing in
+`check.needs_docs`' paths): the packet to write the release's notes from. Write
+`notes.path` (`ReleaseNotes/{version}.md`): a short point each, a bold lead and its issue; then
+each language's copy (`notes.translated`, `ReleaseNotes/{code}/{version}.md`), and
+`product-kit notes --check <version>`, which fails until every language has them, point for point.
+
+## The App Store page (#45)
+
+`store` in the config, in fastlane's layout so any uploader can send it:
+
+```json
+"store": {
+  "locales": {"en": "en-US", "ar": "ar-SA"},
+  "metadata": "fastlane/metadata",
+  "screenshots": {"folder": "fastlane/screenshots", "captions": "store/captions/{code}.json",
+                  "frames": [{"picture": "docs/images/home.png", "pictures": {"ar": "docs/images/ar/home.png"},
+                              "caption": "home", "size": "iphone-6.9"}],
+                  "style": {"background": "#0b1020", "color": "#ffffff"}}
+}
+```
+
+- `product-kit store shots` draws each frame: the picture under its caption (from the language's
+  captions), right to left where the language is, at the size Apple asks for (`iphone-6.9`
+  1320×2868, `iphone-6.5`, `ipad-13` 2064×2752, `mac` 2880×1800), with a headless Chrome that
+  shows no window, into `<folder>/<locale>/NN_<size>.png`.
+- `product-kit store check`: each locale's `name.txt`, `description.txt` and `keywords.txt` are
+  there, and every text within Apple's limits (name and subtitle 30 characters, keywords 100
+  bytes, promotional text 170, description and What's New 4,000); every screenshot at a size
+  the App Store takes.
+- Sending it to Apple (App Store Connect) needs a key, a secret: it waits for the first App
+  Store app and is set up with Kevin (decided on #30).

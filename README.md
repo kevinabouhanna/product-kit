@@ -28,6 +28,7 @@ that says which command to run when (#34). They share one config, `.product-kit.
 | `product-kit doctor`, `gap`, `publish` | What a project shows people that product-kit can't account for yet; something it can't do, into its Inbox; a project's own places to publish. [Reference](docs/product-kit.md) | ✅ |
 | `product-kit projects`, `vendor --all` | Every project that uses product-kit, and its copies of the tools brought up to this version in one go: an issue and a pull request in each. One version for every tool. [Reference](docs/product-kit.md) | ✅ |
 | `product-kit facts` | The version, requirements, links, price and pitch written once in the config, and kept the same in every page that marks them, in each page's language. [Reference](docs/product-kit.md#the-facts-written-once-40) | ✅ |
+| `product-kit notes`, `store` | What's new since the last release, to write its notes from, and every language's notes checked; the App Store page in every language: screenshots drawn from the pictures with their captions at Apple's sizes, the text within Apple's limits. [Reference](docs/product-kit.md#release-notes-in-every-language-45) | ✅ |
 | `product-kit status` | What's out of date, across all of it: each with the command that fixes it, the words Claude writes, or what only Kevin can do; `--release` adds a release's steps. [Reference](docs/product-kit.md#whats-out-of-date-status-38) | ✅ |
 
 ## The order

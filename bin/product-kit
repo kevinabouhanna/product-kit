@@ -26,6 +26,12 @@
   product-kit facts [--write] [--site DIR] [--json]
                               the version, requirements, links and pitch, written once in the
                               config and kept the same in every page that marks them
+  product-kit notes [<tag>] | --check <version>
+                              what's new since the last release, to write its notes from; then
+                              whether every language has them
+  product-kit store check | shots [--dry-run]
+                              the App Store page in every language: its text within Apple's
+                              limits; its screenshots, each picture with its caption, drawn
   product-kit driver <name> …  a driver product-kit brings for shots-kit: ios-simulator
   product-kit gap "<what>" --why "<why>"
                               puts something product-kit couldn't do here in its Inbox
@@ -605,6 +611,11 @@ def status_items(root: pathlib.Path, base: str, release: bool) -> list[dict]:
         if config.get("site"):
             add("the website's docs pages", "`docs-kit site <site checkout>` from the release's tag, in the site's "
                 "pull request", "run", False)
+        add("the release's notes, in every language", "`product-kit notes` lists what's new; write them, then "
+            "`product-kit notes --check <version>`", "claude", False)
+        if config.get("store"):
+            add("the App Store page", "`product-kit store shots`, then `product-kit store check`; sending it to Apple "
+                "waits for Kevin", "run", False)
         if config.get("wiki"):
             add("the wiki", "rebuilt by its workflow on the push to main (`docs-kit wiki`)", "run", False)
     return items
@@ -1056,6 +1067,213 @@ release, `product-kit status --release`. The plan changes with `docs-kit plan sy
     return 0
 
 
+# Release notes and App Store pages, in every language (#45)
+
+def last_tag(root: pathlib.Path) -> str | None:
+    r = subprocess.run(["git", "describe", "--tags", "--abbrev=0"], cwd=root, capture_output=True, text=True)
+    return r.stdout.strip() or None
+
+
+def notes(args: list[str]) -> int:
+    """The release's notes: the packet to write them from (what was merged since the last
+    release, and the issues it closed), or, with --check, every language's notes there."""
+    root = checkout_root()
+    config_file = next((root / c for c in CONFIGS if (root / c).exists()), None)
+    config = json.loads(config_file.read_text(encoding="utf-8")) if config_file else {}
+    spec = config.get("notes", {})
+    english = spec.get("path", "ReleaseNotes/{version}.md")
+    translated = spec.get("translated", "ReleaseNotes/{code}/{version}.md")
+    source = config.get("lang", {}).get("source") or "en"
+    languages = [c for c in config.get("languages", {}) if c != source]
+    if "--check" in args:
+        version = next((a for a in args if not a.startswith("--")), None)
+        if not version:
+            fail("usage: product-kit notes --check <version>")
+        first = root / english.replace("{version}", version)
+        if not first.exists():
+            say(f"notes: no {first.relative_to(root)}: write the release's notes (`product-kit notes` lists what's new)")
+            return 1
+        bullets = sum(1 for l in first.read_text(encoding="utf-8").splitlines() if l.lstrip().startswith(("- ", "* ")))
+        problems = []
+        for code in languages:
+            copy = root / translated.replace("{code}", code).replace("{version}", version)
+            if not copy.exists():
+                problems.append(f"{copy.relative_to(root)} is missing")
+                continue
+            theirs = sum(1 for l in copy.read_text(encoding="utf-8").splitlines() if l.lstrip().startswith(("- ", "* ")))
+            if theirs != bullets:
+                problems.append(f"{copy.relative_to(root)} has {theirs} points, the English {bullets}")
+        if problems:
+            say(f"notes: {version}'s notes aren't in every language:")
+            for line in problems:
+                say(f"  {line}")
+            return 1
+        say(f"notes: {version}'s notes are there in {', '.join([source] + languages)}")
+        return 0
+    since = next((a for a in args if not a.startswith("--")), None) or last_tag(root)
+    if not since:
+        fail("usage: product-kit notes [<the last release's tag>]: there's no tag to start from")
+    repo = config.get("repo") or repo_of(type("P", (), {"config": {}, "root": root})())
+    numbers = []
+    for line in git("log", f"{since}..HEAD", "--format=%s", cwd=root).splitlines():
+        m = re.search(r"\(#(\d+)\)\s*$", line)
+        if m:
+            numbers.append(int(m.group(1)))
+    rules = config.get("check", {}).get("needs_docs", [])
+    app_paths = [p for r in rules for p in r.get("paths", [])]
+    items = []
+    for n in numbers:
+        try:
+            pr = json.loads(gh("pr", "view", str(n), "-R", repo, "--json", "title,closingIssuesReferences,files"))
+        except (RuntimeError, json.JSONDecodeError):
+            continue
+        files = [f["path"] for f in pr.get("files", [])]
+        app = not app_paths or any(fnmatch_any(f, app_paths) for f in files)
+        closes = [i["number"] for i in pr.get("closingIssuesReferences", [])]
+        items.append({"pr": n, "title": pr.get("title", ""), "closes": closes, "app": app})
+    if "--json" in args:
+        print(json.dumps({"since": since, "items": items}, indent=1, ensure_ascii=False))
+        return 0
+    shown = [i for i in items if i["app"]]
+    say(f"notes: since {since}, {len(shown)} change{'s' if len(shown) != 1 else ''} to the app"
+        + (f" ({len(items) - len(shown)} tooling only, left out)" if len(items) > len(shown) else ""))
+    for i in shown:
+        issues = ", ".join(f"#{c}" for c in i["closes"]) or "no issue"
+        say(f"  - {i['title']} (#{i['pr']}; {issues})")
+    say(f"Write {english.replace('{version}', '<version>')}: a short point each, a bold lead and its issue; then "
+        f"each language's copy ({translated}), and `product-kit notes --check <version>`.")
+    return 0
+
+
+def fnmatch_any(path: str, patterns: list[str]) -> bool:
+    import fnmatch
+    return any(fnmatch.fnmatchcase(path, pat) or fnmatch.fnmatchcase(path, pat.replace("**/", "")) for pat in patterns)
+
+
+# The App Store's limits on its text, in characters (keywords in bytes): App Store Connect's.
+STORE_TEXT = {"name.txt": 30, "subtitle.txt": 30, "keywords.txt": 100, "promotional_text.txt": 170,
+              "description.txt": 4000, "release_notes.txt": 4000}
+STORE_REQUIRED = ("name.txt", "description.txt", "keywords.txt")
+STORE_SIZES = {"iphone-6.9": (1320, 2868), "iphone-6.5": (1284, 2778), "ipad-13": (2064, 2752),
+               "mac": (2880, 1800)}
+
+FRAME = """<!doctype html><html lang="{lang}" dir="{dir}"><head><meta charset="utf-8"><style>
+html, body {{ margin: 0; width: {w}px; height: {h}px; overflow: hidden; }}
+body {{ background: {background}; color: {color}; font: 600 {font}px -apple-system, "SF Pro Display", "Helvetica Neue", sans-serif;
+  display: flex; flex-direction: column; align-items: center; }}
+h1 {{ margin: {top}px {side}px {gap}px; font-size: {font}px; line-height: 1.15; text-align: center; }}
+img {{ height: {img}px; border-radius: {radius}px; box-shadow: 0 {shadow}px {blur}px rgba(0,0,0,.25); }}
+</style></head><body><h1>{caption}</h1><img src="{picture}"></body></html>
+"""
+
+
+def chrome() -> str | None:
+    """A headless Chrome that draws a page and never shows a window."""
+    if os.environ.get("PRODUCT_KIT_CHROME"):
+        return os.environ["PRODUCT_KIT_CHROME"]
+    found = sorted(pathlib.Path("~/Library/Caches/ms-playwright").expanduser()
+                   .glob("chromium_headless_shell-*/chrome-headless-shell-*/chrome-headless-shell"))
+    return str(found[-1]) if found else None
+
+
+def store(args: list[str]) -> int:
+    import html
+    root = checkout_root()
+    config_file = next((root / c for c in CONFIGS if (root / c).exists()), None)
+    config = json.loads(config_file.read_text(encoding="utf-8")) if config_file else {}
+    spec = config.get("store")
+    if not spec:
+        say("store: the config has no `store`: the App Store's text and screenshots, per language (docs/product-kit.md)")
+        return 0
+    source = config.get("lang", {}).get("source") or "en"
+    codes = [source] + [c for c in config.get("languages", {}) if c != source]
+    locales = spec.get("locales", {})
+    metadata = root / spec.get("metadata", "fastlane/metadata")
+    shots_dir = root / spec.get("screenshots", {}).get("folder", "fastlane/screenshots")
+    problems: list[str] = []
+
+    if args and args[0] == "shots":
+        frames = spec.get("screenshots", {}).get("frames", [])
+        captions_path = spec.get("screenshots", {}).get("captions", "store/captions/{code}.json")
+        style = {"background": "#0b1020", "color": "#ffffff", **spec.get("screenshots", {}).get("style", {})}
+        browser = chrome()
+        if not browser:
+            fail("needs a headless Chrome to draw the screenshots: `npx playwright install chromium-headless-shell`")
+        made = 0
+        for code in codes:
+            captions_file = root / captions_path.replace("{code}", code)
+            captions = json.loads(captions_file.read_text(encoding="utf-8")) if captions_file.exists() else {}
+            for n, frame in enumerate(frames, 1):
+                size = frame.get("size", "iphone-6.9")
+                w, h = STORE_SIZES.get(size, (0, 0))
+                if not w:
+                    problems.append(f"frame {n}: size {size!r} is one of {', '.join(STORE_SIZES)}")
+                    continue
+                picture = frame["picture"] if code == source else frame.get("pictures", {}).get(code, frame["picture"].replace(
+                    "{code}", code))
+                picture = picture.replace("{code}", code)
+                caption = captions.get(frame.get("caption", ""), "")
+                if not caption:
+                    problems.append(f"{captions_file.relative_to(root)} has no caption {frame.get('caption')!r}")
+                if not (root / picture).exists():
+                    problems.append(f"no picture {picture} for frame {n} in {code}")
+                    continue
+                rtl = code.split("-")[0] in {"ar", "he", "fa", "ur", "ps", "yi", "dv", "ckb", "sd", "ug"}
+                page = FRAME.format(lang=code, dir="rtl" if rtl else "ltr", w=w, h=h, font=int(w * 0.062),
+                                    top=int(h * 0.06), side=int(w * 0.07), gap=int(h * 0.035), img=int(h * 0.74),
+                                    radius=int(w * 0.04), shadow=int(w * 0.01), blur=int(w * 0.04),
+                                    caption=html.escape(caption), picture=(root / picture).as_uri(), **style)
+                out = shots_dir / locales.get(code, code) / f"{n:02d}_{size}.png"
+                if "--dry-run" in args:
+                    say(f"store: would draw {out.relative_to(root)}")
+                    continue
+                out.parent.mkdir(parents=True, exist_ok=True)
+                held = out.with_suffix(".html")
+                held.write_text(page, encoding="utf-8")
+                r = subprocess.run([browser, "--headless", "--disable-gpu", "--hide-scrollbars", "--force-device-scale-factor=1",
+                                    f"--window-size={w},{h}", f"--screenshot={out}", "--allow-file-access-from-files",
+                                    held.as_uri()], capture_output=True, text=True, timeout=120)
+                held.unlink(missing_ok=True)
+                if r.returncode != 0 or not out.exists():
+                    problems.append(f"{out.relative_to(root)} wasn't drawn: {(r.stderr or r.stdout).strip()[-200:]}")
+                    continue
+                made += 1
+        for line in problems:
+            say(f"store: {line}")
+        say(f"store: drew {made} screenshot{'s' if made != 1 else ''}")
+        return 1 if problems else 0
+
+    # store check: every language's text within Apple's limits, and the screenshots at its sizes.
+    for code in codes:
+        folder = metadata / locales.get(code, code)
+        for name, limit in STORE_TEXT.items():
+            f = folder / name
+            if not f.exists():
+                if name in STORE_REQUIRED:
+                    problems.append(f"{f.relative_to(root)} is missing")
+                continue
+            text = f.read_text(encoding="utf-8").strip()
+            length = len(text.encode("utf-8")) if name == "keywords.txt" else len(text)
+            if length > limit:
+                problems.append(f"{f.relative_to(root)} is {length} {'bytes' if name == 'keywords.txt' else 'characters'}, "
+                                f"over Apple's {limit}")
+            if not text:
+                problems.append(f"{f.relative_to(root)} is empty")
+        sizes = set(STORE_SIZES.values())
+        for picture in sorted((shots_dir / locales.get(code, code)).glob("*.png")):
+            r = subprocess.run(["sips", "-g", "pixelWidth", "-g", "pixelHeight", str(picture)], capture_output=True, text=True)
+            nums = re.findall(r"pixel(?:Width|Height): (\d+)", r.stdout)
+            if len(nums) == 2 and (int(nums[0]), int(nums[1])) not in sizes:
+                problems.append(f"{picture.relative_to(root)} is {nums[0]}×{nums[1]}, not a size the App Store takes")
+    if problems:
+        say(f"store: {len(problems)} to put right:")
+        for line in problems:
+            say(f"  {line}")
+        return 1
+    say(f"store: the App Store page is whole in {', '.join(codes)}, within Apple's limits")
+    return 0
+
+
 def gap(args: list[str]) -> int:
     """A gap found in a project, as an entry in product-kit's Inbox, for the next "scan the inbox"."""
     what = next((a for a in args if not a.startswith("--") and (args.index(a) == 0 or args[args.index(a) - 1] not in ("--why", "--project"))), None)
@@ -1136,6 +1354,10 @@ def main(argv: list[str]) -> int:
         return facts_run(rest)
     if command == "init":
         return init(rest)
+    if command == "notes":
+        return notes(rest)
+    if command == "store":
+        return store(rest)
     if command == "driver":
         # A driver product-kit brings for shots-kit (#43): drivers/<name>.
         drivers = KIT / "drivers"
