@@ -596,7 +596,8 @@ def status_items(root: pathlib.Path, base: str, release: bool) -> list[dict]:
                 "screen; commit what it redrew", "run", False)
         elif has_pictures:
             add("the pictures, once the release is installed", "`shots-kit check`, then `shots-kit update` (in the VM); "
-                "rewrite the alt text of each retaken picture from its diff; videos it flags are remade only when asked",
+                "rewrite the alt text of each retaken picture from its diff (`shots-kit alt`); then `shots-kit videos` "
+                "remakes the scripted videos, and the hand-made ones it names are remade only when asked",
                 "claude", False)
         if [c for c in config.get("languages", {}) if c != config.get("lang", {}).get("source", "en")]:
             add("the native review", f"post `lang-kit review {last}` on the release's issue; nothing waits on it",

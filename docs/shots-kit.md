@@ -137,6 +137,35 @@ App Store or the site wants. `Role#identifier` names an element by its accessibi
 the same in every language. An app that draws its own pictures in a test (SwiftUI's
 `ImageRenderer`) needs no simulator at all: `render`, as for a Mac app.
 
+## Videos made by script (#44)
+
+A video, GIF or poster in the manifest's `assets` says `how` it's made. Two ways are scripts,
+remade by `shots-kit videos` whenever a window they show changes, in every language:
+
+```json
+{"file": "docs/images/tour.mp4", "shows": ["home"], "made": "1.0", "how": "recorded",
+ "record": {"shot": "home", "seconds": 8}, "every_language": true}
+
+{"file": "assets/hero.mp4", "shows": ["popover", "connections"], "made": "1.30.2", "how": "built",
+ "build": {"command": ["npx", "hyperframes", "render", "videos/hero", "--lang", "{code}", "-o", "{out}"]},
+ "every_language": true}
+```
+
+- **`recorded`**: the app driven through a shot (its `open` and `click`) and recorded for
+  `seconds`, by the manifest's driver: `product-kit driver ios-simulator` records the simulator
+  as an MP4, out of sight. A Mac app's recorder is #65.
+- **`built`**: put together by a command from the current pictures and the app's own text
+  (Hyperframes, Remotion, ffmpeg; a poster from its video): `{out}` is the file to write,
+  `{code}` the language, `{site}` and `{repo}` the checkouts.
+- Anything else is **made by hand**: named when a window it shows changed, never remade.
+
+`every_language` makes each language's copy in its folder (`languages[].assets`); `language`
+names the one a copy is in. A video is out of date when a window it `shows` was recorded from a
+newer app version than it was `made` from (`shots/trees/versions.json`; a driver's app is read
+from the manifest's `app`, a Mac or iPhone app's Info.plist). `videos` remakes those, or the ones
+named, or all with `--all`, sets `made`, and lists the hand-made ones that are out of date;
+`--dry-run` says what it would make.
+
 ## The files
 
 `shots/*.swift`, in the order `shots/SOURCES` lists: `core.swift` (the config, the manifest,
@@ -178,6 +207,7 @@ changes nothing.
 | `audit [names]` | Each window checked for what VoiceOver can't name, with real data in its lists. |
 | `readme` | Copies the site's pictures the README uses into it, in every language. Files only. |
 | `coverage` | **The asset check**: every image, GIF and video the site, the README and the docs use is a shot's picture or listed, with the windows it shows (`shows` and `made`) or why it shows none (`none`). Files only, so it runs in CI. |
+| `videos [names] [--all] [--dry-run]` | Remakes the videos made by script (`recorded`, `built`) whose windows changed, in every language, and sets `made`; names the hand-made ones that are out of date (#44). |
 | `alt [names] [--since REF]` | Each picture's alt text wherever it's shown, in every language, and what changed in its window's tree since `REF`: the packet for rewriting the alt text after a retake (#39). Files only. |
 | `coverage-test` | Where `coverage` looks for media, on made-up pages. |
 | `mask` | Prints each line it reads as a tree would show it: the numbers, dates and the project's own values masked, in every language it shows. Files only, for trying `shots.masks`. |

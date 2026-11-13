@@ -75,7 +75,7 @@ import ApplicationServices
 import CryptoKit
 import ScreenCaptureKit
 
-let shotsKitVersion = "2.6.0"
+let shotsKitVersion = "2.7.0"
 
 // MARK: - Config
 
@@ -377,8 +377,12 @@ enum Versions {
 
     /// The version of the app at `path`, from its Info.plist.
     static func app(_ path: String) -> String? {
-        let plist = URL(fileURLWithPath: path).appendingPathComponent("Contents/Info.plist")
-        return (NSDictionary(contentsOf: plist)?["CFBundleShortVersionString"] as? String)
+        // A Mac app's is in Contents/; an iPhone app's at its top (product-kit#44).
+        for inside in ["Contents/Info.plist", "Info.plist"] {
+            let plist = URL(fileURLWithPath: path).appendingPathComponent(inside)
+            if let version = NSDictionary(contentsOf: plist)?["CFBundleShortVersionString"] as? String { return version }
+        }
+        return nil
     }
 
     /// `1.26.7`, `1.28`: numbers and dots only.
