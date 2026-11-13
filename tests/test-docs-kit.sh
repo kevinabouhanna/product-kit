@@ -256,9 +256,11 @@ cp "$G/github.json" "$G/before.json"
 out="$("$KIT" plan init --dry-run 2>&1)"
 expect "init --dry-run says what it would do and changes nothing" \
   'grep -q "field \"Level\" made" <<<"$out" && grep -q "made, the plan" <<<"$out" && cmp -s "$G/github.json" "$G/before.json" && git diff --quiet'
-out="$("$KIT" plan init 2>&1)"; status=$?
-expect "init sets the plan up" '[ $status -eq 0 ]'
+echo 1 >"$G/flaky"
+out="$(FAKE_AUTOADD=1 FAKE_FLAKY_WRITES=1 FAKE_FLAKY_SAID="dial tcp 1.2.3.4:443: connect: operation timed out" "$KIT" plan init 2>&1)"; status=$?
+expect "init sets the plan up, on a board that adds new issues by itself, after a write that never connected" '[ $status -eq 0 ]'
 [ $status -eq 0 ] || echo "$out"
+expect "the write was tried again" '[ "$(cat "$G/flaky")" = 0 ]'
 root="$(gh_state '[n for n, x in i.items() if "plan" in x["labels"]][0]')"
 p1="$(gh_state '[n for n, x in i.items() if x["title"] == "Phase 1: One" and "phase" in x["labels"]][0]')"
 p2="$(gh_state '[n for n, x in i.items() if x["title"] == "Phase 2: Two"][0]')"

@@ -28,9 +28,11 @@ if (here / "signed-out").exists():
     sys.exit("To get started with GitHub CLI, please run:  gh auth login\n"
              "Alternatively, populate the GH_TOKEN environment variable with a GitHub API authentication token.")
 flaky = here / "flaky"
-if flaky.exists() and int(flaky.read_text() or 0) > 0:
+writing = any(a.startswith("query=mutation") for a in args) or "-X" in args
+if flaky.exists() and int(flaky.read_text() or 0) > 0 and (writing or not os.environ.get("FAKE_FLAKY_WRITES")):
+    # FAKE_FLAKY_WRITES: only writes fail, as when a write's connection never opens.
     flaky.write_text(str(int(flaky.read_text()) - 1))
-    sys.exit("connection reset by peer")
+    sys.exit(os.environ.get("FAKE_FLAKY_SAID", "connection reset by peer"))
 
 S = json.loads(state_path.read_text())
 B = S["board"]
@@ -194,6 +196,10 @@ def read(query: str, fields: dict) -> dict:
                                                          "repository": {"nameWithOwner": S["repo"]}},
                           "v_status": value_of(item, "Status")})
         return {"node": {"items": {"pageInfo": {"hasNextPage": False, "endCursor": None}, "nodes": nodes}}}
+    if query.startswith("query { nodes(ids:"):
+        ids = re.findall(r'"(I\d+)"', query)
+        note("read issues by id")
+        return {"nodes": [issue_node(by_id(x), query) for x in ids]}
     found = re.findall(r"(i(\d+)): issue\(number: (\d+)\)", query)
     if found:
         note("read issues " + " ".join(n for _, n, _ in found))
@@ -214,6 +220,9 @@ def mutate(query: str) -> dict:
             node = {"id": f"I{number}", "number": number, "title": v["title"], "state": "OPEN", "body": v.get("body", ""),
                     "labels": labels, "milestone": milestone, "parent": None}
             S["issues"][str(number)] = node
+            if os.environ.get("FAKE_AUTOADD"):
+                # The board's auto-add workflow: new issues land on it by themselves.
+                B["items"][str(number)] = {"id": new_id("PVTI_"), "values": {"Status": "Todo"}}
             out[alias] = {"issue": {"id": node["id"], "number": number}}
         elif name == "addSubIssue":
             child = by_id(v["subIssueId"])
@@ -236,6 +245,8 @@ def mutate(query: str) -> dict:
             out[alias] = {"clientMutationId": None}
         elif name == "addProjectV2ItemById":
             i = by_id(v["contentId"])
+            if str(i["number"]) in B["items"]:
+                return {"errors": [{"message": "Content already exists in this project"}]}
             B["items"].setdefault(str(i["number"]), {"id": new_id("PVTI_"), "values": {}})
             out[alias] = {"item": {"id": B["items"][str(i["number"])]["id"]}}
         elif name in ("updateProjectV2ItemFieldValue", "clearProjectV2ItemFieldValue"):
