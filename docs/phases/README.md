@@ -7,9 +7,9 @@ Each phase is a milestone on GitHub and a page here; each plan is an issue, in t
 
 | Order | Plan | Phase |
 |---|---|---|
-| 17 | #47 Prove it: a new project from nothing, and every project current | [Phase 2: Any Mac or iPhone project](02-any-mac-or-iphone-project.md) |
 | 18 | #48 Later: Windows and Android | [Phase 3: Windows and Android](03-windows-and-android.md) |
 
 ## Done
 
-[Phase 1: Out of NetworkMonitor](01-out-of-networkmonitor.md)
+[Phase 1: Out of NetworkMonitor](01-out-of-networkmonitor.md) ·
+[Phase 2: Any Mac or iPhone project](02-any-mac-or-iphone-project.md)

@@ -1,6 +1,6 @@
 # Phase 2: Any Mac or iPhone project
 
-**Milestone:** Phase 2: Any Mac or iPhone project · **Status:** Later
+**Milestone:** Phase 2: Any Mac or iPhone project · **Status:** Done
 
 **Goal:** tools that work for any Mac or iPhone project, a new project set up in one command,
 and everything it shows people (docs, pictures, videos, languages, store pages) kept current by
