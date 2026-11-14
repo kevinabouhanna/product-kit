@@ -47,6 +47,7 @@ Language runs through every step, since a translated picture is a picture of the
 | **1. Out of NetworkMonitor** | The three tools moved out of NetworkMonitor into one plugin, working for a second Mac app | [01-out-of-networkmonitor](phases/01-out-of-networkmonitor.md) |
 | **2. Any Mac or iPhone project** | Nothing of one project left in the code, a new project set up in one command, everything kept current by scripts, iPhone pictures, scripted videos, App Store pages | [02-any-mac-or-iphone-project](phases/02-any-mac-or-iphone-project.md) |
 | **3. Windows and Android** | The same for Windows and Android apps | [03-windows-and-android](phases/03-windows-and-android.md) |
+| **4. The plan at a glance** | Every plan says what comes next and what waits on its owner: `plan check` warns when the roadmap doesn't, and the `needs-you` label is handled by `docs-kit plan` | [04-the-plan-at-a-glance](phases/04-the-plan-at-a-glance.md) |
 
 Phase numbers are names, not the order: the board's Order is.
 
