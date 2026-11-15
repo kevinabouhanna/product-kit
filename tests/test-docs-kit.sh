@@ -202,6 +202,9 @@ issues = [
     issue(14, "An idea", milestone="Ideas"),
     issue(5, "Long done", state="CLOSED", milestone="Phase 0: Start"),
     issue(99, "A closed parent", state="CLOSED"),
+    # Made on the board with GitHub's Create new issue (#98): no milestone, no parent, no Level.
+    {**issue(15, "Sign out of my accounts", body="YouTube Music, Claude, GitHub.\nAnd sort the accounts page."),
+     "createdAt": "2026-11-13T09:00:00Z", "by": "kevin"},
 ]
 def item(n, **values):
     return str(n), {"id": f"PVTI_{n}", "values": values}
@@ -232,6 +235,7 @@ state = {
             item(13, Horizon="Later", Status="Todo"),
             item(14, Order=3, Horizon="Later", Status="Todo"),
             item(5, Status="Todo"),
+            item(15, Status="Todo"),
         ]),
         "views": [{"id": "V1", "number": 1, "name": "Issues", "filter": "no:parent-issue", "layout": "BOARD_LAYOUT"},
                   {"id": "V2", "number": 2, "name": "Roadmap", "filter": "no:parent-issue", "layout": "ROADMAP_LAYOUT"},
@@ -250,6 +254,7 @@ python3 -I "$G/make.py" "$G/github.json"
 export DOCS_KIT_GH="python3 -I $(dirname "$KIT")/../tests/fake-github.py $G/github.json" DOCS_KIT_RETRY_WAIT=0 FAKE_PAGE=3
 gh_state() { python3 -I -c 'import json,sys; s=json.load(open(sys.argv[1])); print(eval(sys.argv[2], {"s": s, "i": s["issues"], "b": s["board"]}))' "$G/github.json" "$1"; }
 gh_true() { python3 -I -c 'import json,sys; s=json.load(open(sys.argv[1])); sys.exit(not eval(sys.argv[2], {"s": s, "i": s["issues"], "b": s["board"]}))' "$G/github.json" "$1"; }
+gh_set() { python3 -I -c 'import json,sys; p=sys.argv[1]; s=json.load(open(p)); i=s["issues"]; b=s["board"]; exec(sys.argv[2]); json.dump(s, open(p, "w"))' "$G/github.json" "$1"; }
 cd "$Q" || exit 1
 git init -q -b main . && git config user.email t@example.com && git config user.name t
 cat >.product-kit.json <<'EOF'
@@ -313,11 +318,13 @@ expect "init makes the Inbox and Needs you, and leaves the board's other views u
 kind="$(gh_state '[f["id"] for f in b["fields"] if f["name"] == "Kind"][0]')"
 expect "a Kind field: Bug, Feature, Idea, Research" \
   '[ "$(gh_state "[o[\"name\"] for f in b[\"fields\"] if f[\"name\"] == \"Kind\" for o in f[\"options\"]]")" = "['"'"'Bug'"'"', '"'"'Feature'"'"', '"'"'Idea'"'"', '"'"'Research'"'"']" ]'
-expect "the Ideas view renamed Inbox in place: still a table of the drafts, now showing the Kind" \
-  '[ "$(gh_state "[(v[\"name\"], v[\"layout\"], v[\"filter\"], v[\"fields\"]) for v in b[\"views\"] if v[\"id\"] == \"V3\"]")" = "[('"'"'Inbox'"'"', '"'"'TABLE_LAYOUT'"'"', '"'"'is:draft'"'"', ['"'"'F1'"'"', '"'"'$kind'"'"'])]" ]'
+expect "the Ideas view renamed Inbox in place, still a table, now showing the Kind" \
+  '[ "$(gh_state "[(v[\"name\"], v[\"layout\"], v[\"fields\"]) for v in b[\"views\"] if v[\"id\"] == \"V3\"]")" = "[('"'"'Inbox'"'"', '"'"'TABLE_LAYOUT'"'"', ['"'"'F1'"'"', '"'"'$kind'"'"'])]" ]'
+expect "and showing what isn't in the plan yet, a draft or an issue made on the board, not only drafts (#98)" \
+  '[ "$(gh_state "[v[\"filter\"] for v in b[\"views\"] if v[\"id\"] == \"V3\"]")" = "['"'"'is:open no:level'"'"']" ]'
 out="$("$KIT" plan sync --views --yes 2>&1)"
 expect "sync --views --yes: just the plan's three, in order: Inbox, Needs you, Roadmap (#88)" \
-  'gh_true "[(v[\"name\"], v[\"filter\"]) for v in b[\"views\"]] == [(\"Inbox\", \"is:draft\"), (\"Needs you\", \"is:open label:needs-you\"), (\"Roadmap\", \"is:open level:Item\")]" && grep -qF "the board'"'"'s view \"Issues\": deleted" <<<"$out"'
+  'gh_true "[(v[\"name\"], v[\"filter\"]) for v in b[\"views\"]] == [(\"Inbox\", \"is:open no:level\"), (\"Needs you\", \"is:open label:needs-you\"), (\"Roadmap\", \"is:open level:Item\")]" && grep -qF "the board'"'"'s view \"Issues\": deleted" <<<"$out"'
 expect "the Roadmap is a board of the items, a column per Horizon, sorted by Order; a timeline from before made again" \
   'gh_true "[(v[\"layout\"], v[\"vertical_group_by\"], v[\"sort_by\"]) for v in b[\"views\"] if v[\"name\"] == \"Roadmap\"] == [(\"BOARD_LAYOUT\", [4], [[3, \"asc\"]])]"'
 index="$(cat docs/phases/README.md)"
@@ -330,7 +337,7 @@ expect "items by Order, those with none last; a phase with no page by name; Done
 expect "issues are read a page at a time" 'grep -q "read the plan after=3" "$G/github.log"'
 out="$("$KIT" plan check 2>&1)"; status=$?
 expect "then check passes" '[ $status -eq 0 ] && grep -q "agree" <<<"$out"'
-expect "and says, without failing, that entries are waiting" 'grep -qF "2 entries waiting in the Inbox: \`docs-kit plan inbox\`" <<<"$out"'
+expect "and says, without failing, that entries are waiting: the drafts and the issue made on the board" 'grep -qF "3 entries waiting in the Inbox: \`docs-kit plan inbox\`" <<<"$out"'
 [ $status -eq 0 ] || echo "$out"
 expect "and sync again changes nothing" '"$KIT" plan sync | grep -q "nothing to change"'
 git add -A && git commit -qm synced
@@ -342,7 +349,13 @@ plan_fails() { # plan_fails <what it should say>
 echo "--- plan: the inbox"
 out="$("$KIT" plan inbox)"
 expect "plan inbox lists them, oldest first, with their Kind, notes and item ids" \
-  '[ "$(grep -E "^[0-9]\. " <<<"$out" | tr "\n" ";")" = "1. A dark mode (kind not set);2. [Bug] Wake me with music;" ] && grep -qF "   > On weekdays." <<<"$out" && grep -q "item PVTI_d2" <<<"$out" && grep -q "views/3" <<<"$out"'
+  '[ "$(grep -E "^[0-9]\. " <<<"$out" | tr "\n" ";")" = "1. A dark mode (kind not set);2. [Bug] Wake me with music;3. #15 Sign out of my accounts (kind not set);" ] && grep -qF "   > On weekdays." <<<"$out" && grep -q "item PVTI_d2" <<<"$out" && grep -q "views/3" <<<"$out"'
+expect "an issue made on the board is listed with the drafts, its own words its note (#98)" \
+  'grep -qF "added 2026-11-13 by kevin · item PVTI_15 · an issue already, #15" <<<"$out" && grep -qF "   > And sort the accounts page." <<<"$out"'
+gh_set 'i["16"] = {"id": "I16", "number": 16, "title": "Planned, not placed yet", "state": "OPEN", "milestone": "Phase 2: Two", "parent": None, "labels": [], "body": ""}; b["items"]["16"] = {"id": "PVTI_16", "values": {"Status": "Todo"}}'
+expect "an issue of the plan sync hasn't placed yet (a milestone, no parent) isn't an entry" \
+  '[ "$("$KIT" plan inbox --json | jq -c "[.[].issue]")" = "[null,null,15]" ]'
+gh_set 'del i["16"]; del b["items"]["16"]'
 expect "plan ideas is the same" '[ "$("$KIT" plan ideas)" = "$out" ]'
 expect "--json too" '[ "$("$KIT" plan inbox --json | jq -r ".[1].kind")" = Bug ]'
 printf '## Why\n\n> Kevin: a song instead of the alarm.\n\n## What\n\nMusic at the wake-up time.\n' >"$TMP/spec.md"
@@ -364,6 +377,11 @@ printf 'Next: #%s.\n' "$n" >>docs/phases/1-one.md
 m="$(gh_state 'max(int(x) for x in i)')"
 expect "with --parent, a step of that item: it copies the item's Horizon; --kind sets the Kind" \
   '[ "$(gh_state "(i[\"$m\"][\"parent\"], [b[\"items\"][\"$m\"][\"values\"].get(k) for k in (\"Level\", \"Horizon\", \"Kind\")], i[\"$m\"][\"labels\"])")" = "(10, ['"'"'Step'"'"', '"'"'Now'"'"', '"'"'Research'"'"'], [])" ]'
+out="$("$KIT" plan inbox --take '#15' --phase "Ideas" --horizon Later --order 9 2>&1)"
+expect "--take with an issue's number: that issue goes into the plan, no new one made (#98)" \
+  '[ "$(gh_state "max(int(x) for x in i)")" = "$m" ] && grep -qF "#15 Sign out of my accounts is in the plan now, an item of #$pi Ideas, Horizon Later, Order 9" <<<"$out"'
+expect "an item of its phase, in its milestone, with its Level, Horizon and Order, its own words kept" \
+  '[ "$(gh_state "(i[\"15\"][\"parent\"], i[\"15\"][\"milestone\"], [b[\"items\"][\"15\"][\"values\"].get(k) for k in (\"Level\", \"Horizon\", \"Order\")], i[\"15\"][\"body\"].splitlines()[0])")" = "($pi, '"'"'Ideas'"'"', ['"'"'Item'"'"', '"'"'Later'"'"', 9.0], '"'"'YouTube Music, Claude, GitHub.'"'"')" ]'
 out="$("$KIT" plan set 14 Order=3.5 --blocked-by 10 2>&1)"
 expect "plan set moves an item and records what it waits for" \
   '[ "$(gh_state "(b[\"items\"][\"14\"][\"values\"][\"Order\"], i[\"14\"].get(\"blocked_by\"))")" = "(3.5, [10])" ] && grep -qF "#14 An idea, Order 3.5, blocked by #10" <<<"$out"'
@@ -372,7 +390,6 @@ out="$("$KIT" plan check 2>&1)"; status=$?
 expect "the Inbox empty, and check passes" '[ $status -eq 0 ] && ! grep -q "waiting in the Inbox" <<<"$out"'
 [ $status -eq 0 ] || echo "$out"
 git add -A && git commit -qm ideas
-gh_set() { python3 -I -c 'import json,sys; p=sys.argv[1]; s=json.load(open(p)); i=s["issues"]; b=s["board"]; exec(sys.argv[2]); json.dump(s, open(p, "w"))' "$G/github.json" "$1"; }
 
 gh_set 'i["20"] = {"id": "I20", "number": 20, "title": "A new idea", "state": "OPEN", "milestone": "Phase 1: One", "parent": None, "labels": [], "body": ""}'
 expect "a new issue in a milestone: check says sync would put it under its phase" 'plan_fails "#20 A new idea: now under #$p1 Phase 1: One"'
@@ -559,7 +576,9 @@ Done (13 Nov 2026, not released yet):
 EOF
 printf '# Phase 2: Ad blocking\n\n**Milestone:** Phase 2: Ad blocking that holds up · **Status:** Next\n\n- #11, what is left of it.\n' >docs/phases/2-ads.md
 printf '# Phase 3: Later things\n\n**Milestone:** Phase 3: Later things · **Status:** Later\n\n| Order | Plan |\n|---|---|\n| 9 | #17 Far away |\n' >docs/phases/3-later.md
-"$KIT" plan sync >/dev/null
+out="$("$KIT" plan sync 2>&1)"
+expect "an Inbox of the drafts only gets the filter that shows an issue made on the board too, still a table (#98)" \
+  'gh_true "[(v[\"filter\"], v[\"layout\"]) for v in b[\"views\"] if v[\"name\"] == \"Inbox\"] == [(\"is:open no:level\", \"TABLE_LAYOUT\")]" && grep -qF "the board'"'"'s view \"Inbox\": filter \"is:open no:level\" (was \"is:draft\"), so an issue made on the board shows there too" <<<"$out"'
 git add -A && git commit -qm plan
 out="$("$KIT" plan check 2>&1)"; status=$?
 expect "the pages and GitHub agree, so check passes, and says what to look at" \
@@ -604,6 +623,10 @@ echo "--- plan: what waits on the owner (#74)"
 expect "the needs-you label, made once, in the owner's name from their GitHub profile" \
   'gh_true "[l.get(\"description\") for l in s[\"labels\"] if l[\"name\"] == \"needs-you\"] == [\"Waits on Robin: only Robin can do or check this. Kept in Later until then.\"]" && grep -q "POST repos/someone/thing/labels" "$G/github.log" && grep -q "GET users/someone" "$G/github.log"'
 expect "and a Needs you view, made once" 'gh_true "[v[\"filter\"] for v in b[\"views\"] if v[\"name\"] == \"Needs you\"] == [\"is:open label:needs-you\"]"'
+gh_set 'b["views"] = [v for v in b["views"] if v["name"] != "Inbox"]'
+out="$("$KIT" plan sync 2>&1)"
+expect "a board with no Inbox gets one: a table of what isn't in the plan yet, with the Kind (#98)" \
+  'gh_true "[(v[\"filter\"], v[\"layout\"], v[\"visible_fields\"]) for v in b[\"views\"] if v[\"name\"] == \"Inbox\"] == [(\"is:open no:level\", \"TABLE_LAYOUT\", [1, 7])]" && grep -qF "the board'"'"'s view \"Inbox\": made (is:open no:level" <<<"$out"'
 gh_set 'i["10"]["labels"].append("needs-you"); i["17"]["labels"].append("needs-you"); i["17"]["body"] = "## Steps\n\n0. **Robin:** pick the colour.\n1. Paint it."; i["15"]["labels"].append("needs-you"); i["20"] = {"id": "I20", "number": 20, "title": "Try it on the real thing", "state": "OPEN", "milestone": "Phase 2: Ad blocking that holds up", "parent": 14, "labels": ["needs-you"], "body": "## Why\n\nIt needs the phone.\n\n## Robin:\n\n1. Plug the phone in and say yes."}'
 out="$("$KIT" plan check 2>&1)"
 expect "a needs-you issue outside Later: check says sync would move it" 'grep -qF "#10 Keep the tooling in order: Horizon Later (it waits on Robin: needs-you)" <<<"$out"'
