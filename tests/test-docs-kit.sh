@@ -545,6 +545,14 @@ Done (13 Nov 2026, not released yet):
 ## What shipped
 
 - #19 Another shipped.
+
+## How the switch works
+
+- **The switch** (#18): what it does.
+
+| Light | Note |
+|---|---|
+| Lamp | #18 |
 EOF
 printf '# Phase 2: Ad blocking\n\n**Milestone:** Phase 2: Ad blocking that holds up · **Status:** Next\n\n- #11, what is left of it.\n' >docs/phases/2-ads.md
 printf '# Phase 3: Later things\n\n**Milestone:** Phase 3: Later things · **Status:** Later\n\n| Order | Plan |\n|---|---|\n| 9 | #17 Far away |\n' >docs/phases/3-later.md
@@ -561,7 +569,7 @@ expect "an umbrella: all its steps done but one" \
 expect "an item that repeats its phase's title" 'grep -qF "#15 Later: Lights repeats its phase'"'"'s title (\"Phase 1: Lights\")" <<<"$out"'
 expect "a page that lists a closed issue with what's still to do" \
   'grep -qF "docs/phases/1-lights.md: lists #16 A closed bug with what'"'"'s still to do, and it'"'"'s closed" <<<"$out"'
-expect "but not under Done, What shipped, or another repository's #16" '! grep -qE "#1[89] |lists #16.*lists #16" <<<"$out"'
+expect "but not under Done, What shipped, a section that only describes, or another repository's #16" '! grep -q "#1[89]" <<<"$out"'
 expect "the board opening on GitHub's starting view" \
   'grep -qF "the board opens on GitHub'"'"'s starting view \"View 1\", not the plan'"'"'s" <<<"$out" && grep -qF "(\"View 1\", \"My items\")" <<<"$out"'
 expect "plan status says them too" '"$KIT" plan status | grep -q "5 things to look at"'

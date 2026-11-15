@@ -1,6 +1,6 @@
 # Phase 4: The plan at a glance
 
-**Milestone:** Phase 4: The plan at a glance · **Status:** Done
+**Milestone:** Phase 4: The plan at a glance · **Status:** Now
 
 **Goal:** every project's plan says at a glance what comes next and what waits on its owner, and
 `docs-kit plan` keeps it that way by itself, instead of a session putting it right by hand.
@@ -10,6 +10,12 @@ organized in a very bad way". And on 2026-11-14, for every project: what only Ke
 check gets the `needs-you` label and waits in Later, so it never blocks the work.
 
 Both came from the Inbox (scanned 2026-11-15).
+
+## What's left
+
+- **#80 Found rolling it out:** the closed-issue warning counts only lists of what's left (a
+  section describing how something works isn't one), and `product-kit vendor` names its issue on
+  the phase's page when the project's upkeep item is closed.
 
 ## What shipped (15 Nov 2026)
 

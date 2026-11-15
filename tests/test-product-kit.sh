@@ -104,6 +104,9 @@ expect "a project with a plan and no upkeep item isn't done, and says why" \
 expect "--upkeep goes with one project" 'pk vendor --all --upkeep 5 | grep -q "goes with --only <one project>"'
 out="$(pk vendor --all --only planned --upkeep 5)"
 git clone -q -b product-kit-${V//./-}-7 "$TMP/origins/planned.git" "$TMP/planned-pushed" 2>/dev/null
+expect "a page plan check says should name the issue (its upkeep item closed) is found (#80)" \
+  '[ "$(python3 -I -c "import runpy, sys; print(runpy.run_path(sys.argv[1])[\"pages_to_mention\"](sys.argv[2], 7))" "$KIT" "  - docs/phases/12-dependable.md: doesn'"'"'t mention #7 Update product-kit'"'"'s tools, an item in \"Phase 12\"
+  - docs/phases/1.md: doesn'"'"'t mention #70 Other")" = "['"'"'docs/phases/12-dependable.md'"'"']" ]'
 expect "given once, the upkeep item takes the issue and stays in the project's config" \
   'grep -q "planned: https://github.com/me/app/pull/8" <<<"$out" && grep -q "names #5 as the item" <<<"$out" && grep -q "\"upkeep\": 5" "$TMP/planned-pushed/.product-kit.json"'
 

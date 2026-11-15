@@ -106,11 +106,13 @@ They're warnings: they never fail the check.
 - **An umbrella in Now or Next:** an item whose steps are all done but one (the board shows the
   umbrella, not the work left: make that step an item and close the umbrella), or whose title
   repeats its phase's ("Ad blocking that holds up" under "Phase 2: Ad blocking that holds up").
-- **A closed issue listed with what's still to do:** a phase page (one not Done) whose list item
-  or table row names a closed issue of its phase first. What a page says is finished doesn't
-  count: under a heading with "done", "shipped", "built" or "released" in it, after a paragraph
-  that starts with one of those words, or in an item that says so ("done 14 Nov", "(fixed",
-  struck through, ticked).
+- **A closed issue listed with what's still to do:** a phase page (one not Done) that names a
+  closed issue of its phase first in a line of a list of what's left: a list item under a
+  heading about what's planned or left ("The plans", "Issues", "What's left", "Next"), or a row
+  of a table with an Order, Horizon, Plan, Issue, Item or Step column. A section that describes
+  how something works doesn't count, nor what a page says is finished: under a heading with
+  "done", "shipped", "built" or "released" in it, after a paragraph that starts with one of
+  those words, or in an item that says so ("done 14 Nov", "(fixed", struck through, ticked).
 - **The board opening on GitHub's starting view:** a view a new board comes with ("View 1",
   "Backlog", "Team items", "My items": no filter, `no:parent-issue`, which shows nothing once every
   item has a parent, or `assignee:@me`) as the first tab.

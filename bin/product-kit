@@ -279,6 +279,11 @@ def migrate_shots_masks(main: pathlib.Path, checkout: pathlib.Path, config: dict
 MIGRATIONS = [migrate_shots_masks]
 
 
+def pages_to_mention(check_output: str, issue: int) -> list[str]:
+    """The phase pages `docs-kit plan check` says should name the issue."""
+    return re.findall(r"^\s*- (\S+\.md): doesn't mention #%d\b" % issue, check_output, re.M)
+
+
 def vendor_project(p: Project, version: str, dry: bool, given_upkeep: int | None = None) -> str:
     behind = p.behind()
     if not behind:
@@ -330,8 +335,19 @@ def vendor_project(p: Project, version: str, dry: bool, given_upkeep: int | None
         # A project with a plan keeps it in step with the new issue (a step of its upkeep item).
         docs_copy = next((path for t, path in Project(tree, config_file).copies() if t.name == "docs-kit"), None)
         if upkeep and "plan" in config and docs_copy:
-            subprocess.run(["python3", "-I", str(docs_copy), "plan", "sync"], cwd=tree, capture_output=True, text=True,
-                           env={**os.environ, "DOCS_KIT_GH": os.environ.get("PRODUCT_KIT_GH", "gh")})
+            env = {**os.environ, "DOCS_KIT_GH": os.environ.get("PRODUCT_KIT_GH", "gh")}
+            plan = ["python3", "-I", str(docs_copy), "plan"]
+            subprocess.run(plan + ["sync"], cwd=tree, capture_output=True, text=True, env=env)
+            # A closed upkeep item makes the issue an item of its phase, which the phase's page
+            # names (#80).
+            check = subprocess.run(plan + ["check"], cwd=tree, capture_output=True, text=True, env=env)
+            for page in pages_to_mention(check.stdout, issue):
+                path = tree / page
+                path.write_text(path.read_text(encoding="utf-8").rstrip("\n")
+                                + f"\n\n**Tooling:** product-kit's tools updated to {version} (#{issue}).\n",
+                                encoding="utf-8")
+                notes.append(f"{page} names #{issue}, an item of its phase while its upkeep item #{upkeep} is closed")
+                subprocess.run(plan + ["sync"], cwd=tree, capture_output=True, text=True, env=env)
         git("add", "-A", cwd=tree)
         git("commit", "-q", "-m", f"{title} (#{issue})\n\n{changes}." + "".join(f"\n{n}." for n in notes), cwd=tree)
         git("push", "-q", "-u", "origin", branch, cwd=tree)

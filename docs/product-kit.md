@@ -31,7 +31,10 @@ does, in each project whose copy differs from this version's:
 3. the new copies, each where the project keeps it (`vendor`, `lang.vendor`, `shots.vendor`);
 4. what the new version needs in the project's config, when a version moved something out of
    the code (below);
-5. the project's plan synced, when it has one and the issue went under its upkeep item;
+5. the project's plan synced, when it has one and the issue went under its upkeep item. When the
+   upkeep item is closed (its phase done), the issue is an item of that phase while it's open,
+   so the phase's page gets a line naming it (`**Tooling:** product-kit's tools updated to …`),
+   as `plan check` asks;
 6. a commit, the branch pushed, and a pull request that closes the issue;
 7. the worktree and the local branch removed, whatever happened.
 
