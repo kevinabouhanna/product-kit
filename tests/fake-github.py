@@ -313,8 +313,10 @@ def mutate(query: str) -> dict:
 
 def rest(method: str, path: str, body: dict) -> dict:
     note(f"{method} {path}")
+    if method == "GET" and path.startswith("users/"):
+        return {"login": path.split("/")[1], "name": S.get("owner_name")}
     if path.endswith("/labels"):
-        label = {"id": new_id("L"), "name": body["name"]}
+        label = {"id": new_id("L"), "name": body["name"], "description": body.get("description", "")}
         S["labels"].append(label)
         save()
         return {"node_id": label["id"], "name": body["name"]}

@@ -53,7 +53,7 @@ import sys
 import time
 import unicodedata
 
-VERSION = "2.10.0"
+VERSION = "2.11.0"
 # The config: product-kit's, shared with lang-kit, or docs-kit's own from before.
 CONFIGS = (".product-kit.json", ".docs-kit.json")
 CONFIG = CONFIGS[0]
@@ -857,6 +857,8 @@ DONE_MARK = re.compile(r"~~|✓|✅|\b(done|shipped|finished|merged|released|bui
 # The filters of GitHub's starting views (a new board's template): none, or "no:parent-issue",
 # which shows nothing once every item has a parent, or "assignee:@me".
 STARTING_FILTERS = {"", "no:parent-issue", "assignee:@me"}
+# Where a needs-you issue was before it went to Later, kept in its description, out of sight (#74).
+NEEDS_MARK = re.compile(r"\n*<!-- docs-kit: before needs-you, (\w[^>]*?) -->\n*")
 LEVELS = ("Plan", "Phase", "Item", "Step")
 FIELD_TYPES = {"order": "NUMBER", "horizon": "SINGLE_SELECT", "level": "SINGLE_SELECT",
                "start": "DATE", "target": "DATE", "status": "SINGLE_SELECT", "kind": "SINGLE_SELECT"}
@@ -986,6 +988,9 @@ class Plan:
         labels = c.get("labels", {})
         self.plan_label = labels.get("plan", "plan")
         self.phase_label = labels.get("phase", "phase")
+        # What only the owner can do or check (#74): kept in Later, listed, with a view.
+        self.needs_label = labels.get("needs_you", "needs-you")
+        self.owner_name = c.get("owner")
         self.done = c.get("done", "Done")
         self.root_title = c.get("title", f"The plan: {project.name}")
 
@@ -1351,6 +1356,12 @@ query($owner: String!, $name: String!, $board: String!, $number: Int!, $after: S
         out += ["Each phase is a sub-issue of this one, and each item a sub-issue of its phase: their order is "
                 f"the [project board]({self.board_url()})'s.", ""]
         out += self.table(phase)
+        waiting = self.waiting()
+        if waiting:
+            later = f", so they wait in {self.horizons[-1]}" if self.horizons else ""
+            out += [f"## Waiting on {self.who()}", "",
+                    f"Only {self.who()} can do or check these (`{self.needs_label}`){later}:", ""]
+            out += [f"- #{i['number']} {i['title']}" for i in waiting] + [""]
         done = self.done_phases(pages)
         if done:
             out += ["## Done", "", " ·\n".join(phase(p["milestone"]) for p in done), ""]
@@ -1370,6 +1381,40 @@ query($owner: String!, $name: String!, $board: String!, $number: Int!, $after: S
         if facts:
             out += [" · ".join(facts), ""]
         return "\n".join(out)
+
+    # What waits on the owner (#74)
+
+    def who(self) -> str:
+        """The owner's name, for "Waits on Kevin" and the "**Kevin:**" section: plan.owner, or the
+        first name on the board owner's GitHub profile, or "the owner"."""
+        if self.owner_name is None:
+            name = ""
+            if getattr(self, "owner_kind", "User") == "User":
+                name = (gh_rest("GET", f"users/{self.board_owner}").get("name") or "").strip()
+            self.owner_name = name.split()[0] if name else "the owner"
+        return self.owner_name
+
+    def waiting(self) -> list[dict]:
+        """The open issues with the needs-you label, in the order of the plan."""
+        def key(i: dict) -> tuple:
+            order = i["values"].get("order")
+            return (order if order is not None else float("inf"), i["number"])
+        return sorted((i for i in self.issues.values()
+                       if i["state"] == "OPEN" and self.needs_label in i["labels"]), key=key)
+
+    def asks(self, i: dict) -> str | None:
+        """What the issue's "**Kevin:**" section (the owner's name) asks: its first words."""
+        names = {self.who().lower(), "you", "owner", "the owner"}
+        lines = i["body"].replace("\r", "").split("\n")
+        for k, line in enumerate(lines):
+            bare = re.sub(r"^\s*#{1,6}\s*", "", line)
+            m = re.match(r"[*_]*([\w' ]+?)[*_]*\s*:[*_]*\s*(.*)$", bare)
+            if not m or m.group(1).strip().lower() not in names:
+                continue
+            said = m.group(2).strip() or next((l.strip() for l in lines[k + 1:] if l.strip()), "")
+            said = re.sub(r"^([-*+]|\d+[.)])\s+", "", said)
+            return said if len(said) <= 140 else said[:139].rstrip() + "…"
+        return None
 
     def board_url(self) -> str:
         kind = "orgs" if self.owner_kind == "Organization" else "users"
@@ -1471,7 +1516,7 @@ query($owner: String!, $name: String!, $board: String!, $number: Int!, $after: S
 
     def view_names(self) -> set[str]:
         """The views docs-kit makes."""
-        return {"Now · Next · Later", "Roadmap", "In order", "Inbox", "Ideas"} | set(self.horizons)
+        return {"Now · Next · Later", "Roadmap", "In order", "Inbox", "Ideas", "Needs you"} | set(self.horizons)
 
     def starting_views(self) -> list[dict]:
         """GitHub's starting views: not the plan's, and with a starting filter."""
@@ -1570,6 +1615,11 @@ query($owner: String!, $name: String!, $board: String!, $number: Int!, $after: S
             found.append(f"the board opens on GitHub's starting view \"{self.views[0]['name']}\", not the plan's: "
                          "`docs-kit plan sync --views` makes the plan's views, and with `--yes` deletes GitHub's "
                          f"starting ones ({names}). Then drag Now · Next · Later to the first tab, if it isn't")
+        for i in self.waiting():
+            if not self.asks(i):
+                found.append(f"#{i['number']} {i['title']} waits on {self.who()} ({self.needs_label}) and doesn't "
+                             f"say what {self.who()} should do: add a short \"**{self.who()}:**\" section, in plain "
+                             "words")
         return found
 
 
@@ -1768,6 +1818,9 @@ def sync(plan: Plan, pages: dict[str, dict], dry: bool, setup: bool = False) -> 
     # The labels, the root, and a phase issue per phase.
     ch.label(p.plan_label, "5319e7", "The project's plan: the root of its issues")
     ch.label(p.phase_label, "1d76db", "A phase of the plan, in its milestone")
+    if p.needs_label not in p.labels:
+        said = f"Waits on {p.who()}: only {p.who()} can do or check this. Kept in Later until then."
+        ch.label(p.needs_label, "d93f0b", said[:100])
     root = p.root()
     if not root:
         root = ch.create_issue(p.root_title, "", p.plan_label, None)
@@ -1816,17 +1869,43 @@ def sync(plan: Plan, pages: dict[str, dict], dry: bool, setup: bool = False) -> 
             level = p.level(i)
             if level and i["values"].get("level") != level:
                 ch.value(i, "level", level)
+    # What waits on the owner goes to Later, remembering where it was in its description, and
+    # goes back when the label comes off, unless someone has moved it since (#74).
+    later = p.horizons[-1] if p.horizons and p.fields.get("horizon") else None
+    for i in in_plan:
+        if not later or p.structural(i):
+            continue
+        mark = NEEDS_MARK.search(i["body"])
+        if p.needs_label in i["labels"]:
+            was = i["values"].get("horizon")
+            if was == later:
+                continue
+            if not mark:
+                note = f"<!-- docs-kit: before needs-you, {p.fields['horizon']} {was or 'none'} -->"
+                ch.body(i, i["body"].rstrip() + "\n\n" + note, f"remembers it was {was or 'without a Horizon'}")
+            ch.value(i, "horizon", later, f"it waits on {p.who()}: {p.needs_label}")
+        elif mark:
+            was = mark.group(1).split()[-1]
+            if p.level(i) == "Item" and i["values"].get("horizon") == later and was in p.horizons:
+                ch.value(i, "horizon", was, f"back where it was: the {p.needs_label} label came off")
+            ch.body(i, NEEDS_MARK.sub("\n\n", i["body"]).strip(), f"no longer {p.needs_label}")
     copied = [k for k in ("order", "horizon") if p.fields.get(k)] + [f"i{n}" for n in range(len(p.inherit))]
     for i in in_plan:
         if p.level(i) != "Step":
             continue
         item = p.item_of(i)
         for key in copied:
+            if key == "horizon" and p.needs_label in i["labels"]:
+                continue
             mine, theirs = i["values"].get(key), (item or {}).get("values", {}).get(key)
             if theirs is not None and mine != theirs:
                 ch.value(i, key, theirs, f"from #{item['number']}")
 
-    # Each phase's own values from its items, and open while it has work.
+    # Each phase's own values from its items, and open while it has work, with a Status that
+    # isn't Done (the board's first other one, Todo).
+    status_field = p.board_fields.get(p.fields.get("status") or "") or {}
+    open_status = next((o["name"] for o in status_field.get("options", []) if o["name"] != p.done), None) \
+        if p.done in {o["name"] for o in status_field.get("options", [])} else None
     def items_under(phase: dict) -> list[dict]:
         return [i for i in p.open_work() if p.level(i) == "Item" and phase in p.ancestors(i)]
     for milestone, phase in sorted(phases.items(), key=lambda kv: kv[1]["number"]):
@@ -1839,6 +1918,10 @@ def sync(plan: Plan, pages: dict[str, dict], dry: bool, setup: bool = False) -> 
             ch.state(phase, False, "everything in it is done")
         if phase["state"] != "OPEN":
             continue
+        # An open phase isn't Done: the board's own workflow closes a Done issue again at its
+        # next change (#78).
+        if open_status and phase["item"] and phase["values"].get("status") == p.done:
+            ch.value(phase, "status", open_status, "it's open again, and the board closes what's Done")
         horizons = [i["values"].get("horizon") for i in items if i["values"].get("horizon") in p.horizons]
         sums = {"horizon": min(horizons, key=p.horizons.index) if horizons else None}
         for key, pick in (("order", min), ("start", min), ("target", max)):
@@ -2012,6 +2095,29 @@ def views(plan: Plan, dry: bool, delete: bool = False) -> list[str]:
         made = gh_rest("POST", f"{kind}/{p.board_owner}/projectsV2/{p.board_number}/views", body, retry=False)
         p.views.append({"id": made.get("node_id") or made.get("id"), "number": made.get("number"),
                         "name": view["name"], "filter": view["filter"]})
+    return said
+
+
+def needs_view(p: Plan, dry: bool) -> list[str]:
+    """The board's Needs you view (#74): a table of the open issues that wait on the owner, made
+    when it's missing; one of that name is never changed."""
+    if any(v["name"] == "Needs you" for v in p.views):
+        return []
+    view = {"name": "Needs you", "layout": "table", "filter": f"is:open label:{p.needs_label}"}
+    said = [f"the board's view \"Needs you\": made ({view['filter']}, what only the owner can do or check)"]
+    if not dry:
+        f = {key: p.board_fields.get(name) for key, name in p.read_fields().items()}
+        shown = [x for x in ((p.board_fields.get("Title") or {}).get("databaseId"),
+                             (f.get("order") or {}).get("databaseId"), (f.get("horizon") or {}).get("databaseId"),
+                             (p.board_fields.get("Milestone") or {}).get("databaseId")) if x]
+        if shown:
+            view["visible_fields"] = shown
+        if (f.get("order") or {}).get("databaseId"):
+            view["sort_by"] = [[f["order"]["databaseId"], "asc"]]
+        kind = "orgs" if p.owner_kind == "Organization" else "users"
+        made = gh_rest("POST", f"{kind}/{p.board_owner}/projectsV2/{p.board_number}/views", view, retry=False)
+        p.views.append({"id": made.get("node_id") or made.get("id"), "number": made.get("number"),
+                        "name": "Needs you", "filter": view["filter"], "layout": "TABLE_LAYOUT"})
     return said
 
 
@@ -2289,6 +2395,7 @@ def plan(project: Project, rest: list[str]) -> int:
     elif what == "sync" and "--views" in rest:
         said += views(p, dry, delete="--yes" in rest)
     said += inbox_board(p, dry or what == "check")
+    said += needs_view(p, dry or what == "check")
     blocking = p.field_problems()
     if what in ("sync", "init") and blocking:
         print("docs-kit plan: can't sync until these are put right:")
@@ -2308,10 +2415,12 @@ def plan(project: Project, rest: list[str]) -> int:
                   f"the issues, the board and {p.index} agree")
             if waiting:
                 print(f"docs-kit plan: {waiting}")
+            waits_on(p)
             look_at(notes)
             return 0
         if waiting:
             print(f"docs-kit plan: {waiting}")
+        waits_on(p)
         look_at(notes)
         if problems:
             print(f"docs-kit plan: the plan's pages and GitHub don't agree ({len(problems)}):")
@@ -2335,6 +2444,17 @@ def plan(project: Project, rest: list[str]) -> int:
         print("\n".join(f"  - {x}" for x in problems))
         return 1
     return 0
+
+
+def waits_on(p: Plan) -> None:
+    """What waits on the owner (#74), each with what it asks of them. Never a failure."""
+    waiting = p.waiting()
+    if waiting:
+        print(f"docs-kit plan: {len(waiting)} waiting on {p.who()} ({p.needs_label}), kept in "
+              f"{p.horizons[-1] if p.horizons else 'Later'}:")
+        for i in waiting:
+            asks = p.asks(i)
+            print(f"  - #{i['number']} {i['title']}" + (f". {p.who()}: {asks}" if asks else ""))
 
 
 def look_at(notes: list[str]) -> None:
