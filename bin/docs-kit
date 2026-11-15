@@ -53,7 +53,7 @@ import sys
 import time
 import unicodedata
 
-VERSION = "2.11.1"
+VERSION = "2.11.2"
 # The config: product-kit's, shared with lang-kit, or docs-kit's own from before.
 CONFIGS = (".product-kit.json", ".docs-kit.json")
 CONFIG = CONFIGS[0]
@@ -1410,7 +1410,8 @@ query($owner: String!, $name: String!, $board: String!, $number: Int!, $after: S
         names = {self.who().lower(), "you", "owner", "the owner"}
         lines = i["body"].replace("\r", "").split("\n")
         for k, line in enumerate(lines):
-            bare = re.sub(r"^\s*#{1,6}\s*", "", line)
+            # A heading, a line of its own, or a step of a list (#83).
+            bare = re.sub(r"^\s*(#{1,6}\s*|([-*+]|\d+[.)])\s+)", "", line)
             m = re.match(r"[*_]*([\w' ]+?)[*_]*\s*:[*_]*\s*(.*)$", bare)
             if not m or m.group(1).strip().lower() not in names:
                 continue

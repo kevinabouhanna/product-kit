@@ -592,7 +592,7 @@ echo "--- plan: what waits on the owner (#74)"
 expect "the needs-you label, made once, in the owner's name from their GitHub profile" \
   'gh_true "[l.get(\"description\") for l in s[\"labels\"] if l[\"name\"] == \"needs-you\"] == [\"Waits on Robin: only Robin can do or check this. Kept in Later until then.\"]" && grep -q "POST repos/someone/thing/labels" "$G/github.log" && grep -q "GET users/someone" "$G/github.log"'
 expect "and a Needs you view, made once" 'gh_true "[v[\"filter\"] for v in b[\"views\"] if v[\"name\"] == \"Needs you\"] == [\"is:open label:needs-you\"]"'
-gh_set 'i["10"]["labels"].append("needs-you"); i["17"]["labels"].append("needs-you"); i["15"]["labels"].append("needs-you"); i["20"] = {"id": "I20", "number": 20, "title": "Try it on the real thing", "state": "OPEN", "milestone": "Phase 2: Ad blocking that holds up", "parent": 14, "labels": ["needs-you"], "body": "## Why\n\nIt needs the phone.\n\n## Robin:\n\n1. Plug the phone in and say yes."}'
+gh_set 'i["10"]["labels"].append("needs-you"); i["17"]["labels"].append("needs-you"); i["17"]["body"] = "## Steps\n\n0. **Robin:** pick the colour.\n1. Paint it."; i["15"]["labels"].append("needs-you"); i["20"] = {"id": "I20", "number": 20, "title": "Try it on the real thing", "state": "OPEN", "milestone": "Phase 2: Ad blocking that holds up", "parent": 14, "labels": ["needs-you"], "body": "## Why\n\nIt needs the phone.\n\n## Robin:\n\n1. Plug the phone in and say yes."}'
 out="$("$KIT" plan check 2>&1)"
 expect "a needs-you issue outside Later: check says sync would move it" 'grep -qF "#10 Keep the tooling in order: Horizon Later (it waits on Robin: needs-you)" <<<"$out"'
 "$KIT" plan sync >/dev/null
@@ -611,6 +611,8 @@ expect "check passes, and lists them with what each asks" \
 [ $status -eq 0 ] || echo "$out"
 expect "and warns about each that doesn't say what the owner should do" \
   'grep -qF "#10 Keep the tooling in order waits on Robin (needs-you) and doesn'"'"'t say what Robin should do: add a short \"**Robin:**\" section" <<<"$out" && ! grep -q "#20 Try it.*doesn'"'"'t say" <<<"$out"'
+expect "a step of a list that starts with the owner's name says it too (#83)" \
+  'grep -qF "  - #17 Far away. Robin: pick the colour." <<<"$out" && ! grep -q "#17 Far away waits on Robin" <<<"$out"'
 gh_set 'i["10"]["labels"].remove("needs-you"); i["20"]["labels"].remove("needs-you"); i["15"]["labels"].remove("needs-you"); b["items"]["15"]["values"]["Horizon"] = "Now"'
 "$KIT" plan sync >/dev/null
 expect "the label off: it goes back where it was, and its description forgets" \

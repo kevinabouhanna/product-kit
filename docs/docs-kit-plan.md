@@ -177,7 +177,8 @@ fails) about one that doesn't say what the owner should do. The root issue lists
 it's missing, shows them.
 
 The owner's name is the first name on the board owner's GitHub profile, or `plan.owner` in the
-config, or "the owner"; the section may also be called "You:" or "Owner:".
+config, or "the owner"; the section may also be called "You:" or "Owner:", and a step of a list
+that starts with the name counts too ("1. **Kevin:** in the Alexa app, …").
 
 ## The Inbox
 

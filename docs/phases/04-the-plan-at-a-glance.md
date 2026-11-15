@@ -1,6 +1,6 @@
 # Phase 4: The plan at a glance
 
-**Milestone:** Phase 4: The plan at a glance · **Status:** Done
+**Milestone:** Phase 4: The plan at a glance · **Status:** Now
 
 **Goal:** every project's plan says at a glance what comes next and what waits on its owner, and
 `docs-kit plan` keeps it that way by itself, instead of a session putting it right by hand.
@@ -10,6 +10,11 @@ organized in a very bad way". And on 2026-11-14, for every project: what only Ke
 check gets the `needs-you` label and waits in Later, so it never blocks the work.
 
 Both came from the Inbox (scanned 2026-11-15).
+
+## What's left
+
+- **#83 A "Kevin:" step in a list says what to do:** home-control#359 and #280 say it as a step
+  of a numbered list, which `plan check` didn't count.
 
 ## What shipped (15 Nov 2026)
 
