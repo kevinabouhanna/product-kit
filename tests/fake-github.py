@@ -158,6 +158,7 @@ def issue_node(i: dict, query: str) -> dict:
     parent = S["issues"].get(str(i["parent"])) if i.get("parent") else None
     return {"id": i["id"], "number": i["number"], "title": i["title"], "state": i["state"], "body": i.get("body", ""),
             "isPinned": i.get("pinned", False),
+            "createdAt": i.get("createdAt", "2026-11-01T00:00:00Z"), "author": {"login": i.get("by", "someone")},
             "milestone": next(({"number": m["number"], "title": m["title"]} for m in S["milestones"]
                                if m["title"] == i.get("milestone")), None),
             "parent": {"number": parent["number"], "state": parent["state"]} if parent else None,

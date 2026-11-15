@@ -76,6 +76,9 @@ The phase issue is #30, where this was planned.
 - **Proved** (#47): a new Mac app from nothing to every check passing in one run
   (`tests/test-prove.sh`); NetworkMonitor, claude-profiles-mac and home-control on the current
   kit, what's left in each with its issue.
+- **A quick check for the finish gate** (#94, 15 Nov, claude-parallel-sessions#146): the tests
+  that need no Swift build, browser or simulator run before a session may stop its turn with
+  changes, and send it back while they fail.
 
 ## The items, all done
 
@@ -110,9 +113,6 @@ Later: videos, store pages, web views, the proof.
 
 - **#86 The iPhone pictures' test fails now and then** (15 Nov): two of its checks failed on one
   CI run and passed on the next, with nothing changed.
-- **#94 A quick check for the finish gate** (15 Nov, claude-parallel-sessions#146): the tests
-  that need no Swift build, browser or simulator run before a session may stop its turn with
-  changes, and send it back while they fail.
 
 ## Not in this phase
 

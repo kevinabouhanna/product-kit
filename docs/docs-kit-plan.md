@@ -50,8 +50,8 @@ or not.
 | `docs-kit plan sync [--dry-run]` | Makes GitHub follow the tree, and the generated files follow GitHub: see below. Prints every change in plain words; `--dry-run` only prints them. |
 | `docs-kit plan sync --views [--yes]` | The same, and the board's three views made or put right ([the views](#the-views)); with `--yes`, every other view is deleted. |
 | `docs-kit plan check` | Fails when anything `sync` would change, or anything it can't (below). One line when all is well (and one more when entries are waiting in the Inbox, which never fails it), then [what to look at](#what-to-look-at), which never fails it either. For CI. |
-| `docs-kit plan inbox [--json]` | What's waiting in the board's Inbox, oldest first: title, Kind (or "kind not set"), note, when and by whom, item id. `plan ideas` is the same. [The Inbox](#the-inbox). |
-| `docs-kit plan inbox --take <item> --phase "<milestone>" …` | Takes one entry into the plan as an issue, with its spec. [The Inbox](#the-inbox). |
+| `docs-kit plan inbox [--json]` | What's waiting in the board's Inbox, oldest first: title, Kind (or "kind not set"), note, when and by whom, item id, and the issue's number for an issue made on the board. `plan ideas` is the same. [The Inbox](#the-inbox). |
+| `docs-kit plan inbox --take <item, or #N> --phase "<milestone>" …` | Takes one entry into the plan, with its spec: a draft becomes an issue; an issue made on the board is placed as it is. [The Inbox](#the-inbox). |
 | `docs-kit plan set <issue> [Field=value …] [--blocked-by N …]` | Moves an issue in the plan (its Order, say) or records what it waits for, then syncs. |
 | `docs-kit plan index [--check]` | Writes the index (`sync` does too), or says whether it's up to date. |
 | `docs-kit plan status [--write]` | Each page's Milestone and Status line as GitHub has it; `--write` puts it on the pages (and adds the line where a page's title is its milestone's). |
@@ -148,7 +148,7 @@ Every board has three views, the same on every project, in this order (Kevin, 20
 
 | View | Shows |
 |---|---|
-| **Inbox** | A table of the board's drafts, with their Kind: what the owner adds by hand, until "scan the inbox" takes it into the plan. Made by `sync` when it's missing (an "Ideas" view from before is renamed); never otherwise changed. |
+| **Inbox** | A table of what the owner adds by hand, with its Kind, until "scan the inbox" takes it into the plan: `is:open no:level no:milestone -is:pr`, every draft and every issue made on the board that isn't in the plan yet (#98). An issue of the plan has a Level, or a milestone until `sync` gives it one. Made by `sync` when it's missing (an "Ideas" view from before is renamed), or its filter put right (`is:draft`, from before, hid an issue made there), the same on every board. |
 | **Needs you** | A table of the open issues that [wait on the owner](#what-waits-on-the-owner), in Order. Made by `sync` when it's missing; never otherwise changed. |
 | **Roadmap** | The whole plan: a board of the open items, a column each for Now, Next and Later, in Order. Made by `plan init` and `plan sync --views`, or its filter put right. |
 
@@ -226,13 +226,21 @@ that starts with the name counts too ("1. **Kevin:** in the Alexa app, …").
 
 Everything the owner wants to tell the project between sessions goes in the board's **Inbox**
 view, by hand, with no session needed: a bug, a feature, an idea, something to research. It's
-"every human input": an entry is a *draft* on the board, no issue yet, nothing in the plan,
-nothing `plan check` fails on (it only says how many are waiting).
+"every human input": an entry is anything open on the board that isn't in the plan yet (no
+Level), a *draft* or an issue made there, and nothing `plan check` fails on (it only says how
+many are waiting).
 
-**Adding an entry:** **+ Add item** at the bottom of the Inbox table, a title, Enter. Then,
-optionally: the **Kind** cell (Bug, Feature, Idea or Research), and the title clicked open to
-add a note (what happened or what it's for, an example, a link). Kind can be left empty: the
-session works it out.
+**Adding an entry,** either way, and it stays in the list (Kevin, 2026-11-15, #98: "I just want
+to type the title and maybe description, and then it should be added to the list"):
+
+- **+ Add item** at the bottom of the Inbox table, a title, Enter: a draft. Click the title
+  open to add a note.
+- The **+** at the bottom of the table, then **Create new issue**: a title and a description at
+  once, an issue in the repository, on the board, outside the plan until it's taken in.
+
+Then, optionally, the **Kind** cell (Bug, Feature, Idea or Research). The note says what
+happened or what it's for, an example, a link. Kind can be left empty: the session works it
+out.
 
 | Kind | Is |
 |---|---|
@@ -273,16 +281,17 @@ session:
    docs-kit plan inbox --take <item id> --phase "<milestone>" --parent <item number> --body-file <spec.md>
    ```
 
-   The draft becomes an issue in the repository (the same card on the board, its Kind kept;
-   a Bug also gets the repository's `bug` label, where there is one), with the spec as its
-   description, under its phase issue (or the item), in the milestone, with its values; then
-   `sync` runs;
+   A draft becomes an issue in the repository (the same card on the board, its Kind kept); an
+   issue made on the board stays the same issue (`--take` takes its item id or its number,
+   `#731`). Either way a Bug also gets the repository's `bug` label, where there is one, the spec
+   becomes its description (without `--body-file`, the owner's own words stay), and it goes
+   under its phase issue (or the item), in the milestone, with its values; then `sync` runs;
 6. says each new item on its phase's page, runs `docs-kit plan check`, and tells the owner where
    each entry went (its number, kind, phase, horizon and place) and what moved.
 
 `--set Field=value` sets any field of the board; `--order` takes a decimal to slot one between
 two. The view was called Ideas before; `plan init` and `plan sync` rename it in place, keeping
-its layout and filter, and make the Kind field and show it there.
+its layout, and make the Kind field and show it there.
 
 ### A request made in a session
 
