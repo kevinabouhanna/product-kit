@@ -1,6 +1,6 @@
 # Phase 4: The plan at a glance
 
-**Milestone:** Phase 4: The plan at a glance · **Status:** Done
+**Milestone:** Phase 4: The plan at a glance · **Status:** Now
 
 **Goal:** every project's plan says at a glance what comes next and what waits on its owner, and
 `docs-kit plan` keeps it that way by itself, instead of a session putting it right by hand.
@@ -10,6 +10,15 @@ organized in a very bad way". And on 2026-11-14, for every project: what only Ke
 check gets the `needs-you` label and waits in Later, so it never blocks the work.
 
 Both came from the Inbox (scanned 2026-11-15).
+
+Then, the same day, looking at every board: "it doesn't feel consistent … I have a lot of stuff
+… I think we should only have three": the Inbox, Needs you, and the Roadmap of Now, Next and
+Later.
+
+## What's left
+
+- **#88 Three views on every board:** Inbox, Needs you and the Roadmap, in that order, and
+  nothing else; a request made in a session goes straight into the plan, with no Inbox entry.
 
 ## What shipped (15 Nov 2026)
 

@@ -308,18 +308,18 @@ expect "the root's description: the plan's first paragraph, its links made whole
 expect "then the items by Horizon, each with its phase and phase issue" \
   'grep -qF "| 2 | #10 First plan | [Phase 1: One](https://github.com/someone/thing/blob/main/docs/phases/1-one.md) #$p1 |" <<<"$body" && grep -q "^## Now" <<<"$body"'
 expect "and the finished phases last" 'grep -A2 "^## Done" <<<"$body" | grep -qF "[Phase 0: Start]"'
-expect "the plan's views: made, or their filters put right, with a table per Horizon" \
-  'gh_true "sorted((v[\"name\"], v[\"filter\"]) for v in b[\"views\"]) == [(\"In order\", \"is:open level:Item,Step\"), (\"Inbox\", \"is:draft\"), (\"Issues\", \"no:parent-issue\"), (\"Later\", \"is:open horizon:Later level:Item,Step\"), (\"Needs you\", \"is:open label:needs-you\"), (\"Next\", \"is:open horizon:Next level:Item,Step\"), (\"Now\", \"is:open horizon:Now level:Item,Step\"), (\"Now · Next · Later\", \"is:open level:Item\"), (\"Roadmap\", \"is:open level:Phase,Item\")]"'
-expect "GitHub's starting view stays without --yes, and init says --yes would delete it" \
-  'grep -qF "the board'"'"'s view \"Issues\" is one of GitHub'"'"'s starting views: \`--views --yes\` deletes it" <<<"$out"'
-expect "a view whose filter is put right keeps its layout" '[ "$(gh_state "[v[\"layout\"] for v in b[\"views\"] if v[\"name\"] == \"Roadmap\"][0]")" = "ROADMAP_LAYOUT" ]'
+expect "init makes the Inbox and Needs you, and leaves the board's other views until --yes" \
+  'gh_true "[v[\"name\"] for v in b[\"views\"]] == [\"Issues\", \"Roadmap\", \"Inbox\", \"Needs you\"]" && grep -qF "the board'"'"'s view \"Issues\" isn'"'"'t one of the plan'"'"'s three: \`--views --yes\` deletes it" <<<"$out" && grep -qF "the board'"'"'s view \"Roadmap\" isn'"'"'t one of the plan'"'"'s three" <<<"$out"'
 kind="$(gh_state '[f["id"] for f in b["fields"] if f["name"] == "Kind"][0]')"
 expect "a Kind field: Bug, Feature, Idea, Research" \
   '[ "$(gh_state "[o[\"name\"] for f in b[\"fields\"] if f[\"name\"] == \"Kind\" for o in f[\"options\"]]")" = "['"'"'Bug'"'"', '"'"'Feature'"'"', '"'"'Idea'"'"', '"'"'Research'"'"']" ]'
 expect "the Ideas view renamed Inbox in place: still a table of the drafts, now showing the Kind" \
   '[ "$(gh_state "[(v[\"name\"], v[\"layout\"], v[\"filter\"], v[\"fields\"]) for v in b[\"views\"] if v[\"id\"] == \"V3\"]")" = "[('"'"'Inbox'"'"', '"'"'TABLE_LAYOUT'"'"', '"'"'is:draft'"'"', ['"'"'F1'"'"', '"'"'$kind'"'"'])]" ]'
-expect "the board view's columns are the Horizon, sorted by Order" \
-  '[ "$(gh_state "[(v[\"vertical_group_by\"], v[\"sort_by\"]) for v in b[\"views\"] if v[\"name\"] == \"Now · Next · Later\"]")" = "[([4], [[3, '"'"'asc'"'"']])]" ]'
+out="$("$KIT" plan sync --views --yes 2>&1)"
+expect "sync --views --yes: just the plan's three, in order: Inbox, Needs you, Roadmap (#88)" \
+  'gh_true "[(v[\"name\"], v[\"filter\"]) for v in b[\"views\"]] == [(\"Inbox\", \"is:draft\"), (\"Needs you\", \"is:open label:needs-you\"), (\"Roadmap\", \"is:open level:Item\")]" && grep -qF "the board'"'"'s view \"Issues\": deleted" <<<"$out"'
+expect "the Roadmap is a board of the items, a column per Horizon, sorted by Order; a timeline from before made again" \
+  'gh_true "[(v[\"layout\"], v[\"vertical_group_by\"], v[\"sort_by\"]) for v in b[\"views\"] if v[\"name\"] == \"Roadmap\"] == [(\"BOARD_LAYOUT\", [4], [[3, \"asc\"]])]"'
 index="$(cat docs/phases/README.md)"
 expect "the index is written too, keeping its head" \
   'grep -q "^<!-- Written by .docs-kit plan index" <<<"$index" && grep -q "^What the phases are" <<<"$index" && ! grep -q Stale <<<"$index"'
@@ -570,15 +570,15 @@ expect "an item that repeats its phase's title" 'grep -qF "#15 Later: Lights rep
 expect "a page that lists a closed issue with what's still to do" \
   'grep -qF "docs/phases/1-lights.md: lists #16 A closed bug with what'"'"'s still to do, and it'"'"'s closed" <<<"$out"'
 expect "but not under Done, What shipped, a section that only describes, or another repository's #16" '! grep -q "#1[89]" <<<"$out"'
-expect "the board opening on GitHub's starting view" \
-  'grep -qF "the board opens on GitHub'"'"'s starting view \"View 1\", not the plan'"'"'s" <<<"$out" && grep -qF "(\"View 1\", \"My items\")" <<<"$out"'
+expect "a board with views besides the plan's three, and no Roadmap (#88)" \
+  'grep -qF "the board has views besides Inbox, Needs you and Roadmap (\"View 1\", \"Now · Next · Later\", \"My items\") and no \"Roadmap\": \`docs-kit plan sync --views --yes\` leaves it with just those three" <<<"$out"'
 expect "plan status says them too" '"$KIT" plan status | grep -q "5 things to look at"'
 out="$("$KIT" plan sync --views 2>&1)"
-expect "sync --views makes the plan's tables, and only says it would delete GitHub's" \
-  'gh_true "[v[\"name\"] for v in b[\"views\"]] == [\"View 1\", \"Now · Next · Later\", \"Inbox\", \"My items\", \"Needs you\", \"Roadmap\", \"In order\", \"Now\", \"Next\", \"Later\"]" && grep -qF "\"View 1\" is one of GitHub'"'"'s starting views: \`--views --yes\` deletes it" <<<"$out"'
+expect "sync --views makes the Roadmap, and only says it would delete the others" \
+  'gh_true "[v[\"name\"] for v in b[\"views\"]] == [\"View 1\", \"Now · Next · Later\", \"Inbox\", \"My items\", \"Needs you\", \"Roadmap\"]" && grep -qF "\"View 1\" isn'"'"'t one of the plan'"'"'s three: \`--views --yes\` deletes it" <<<"$out"'
 "$KIT" plan sync --views --yes >/dev/null
-expect "with --yes, GitHub's starting views go, and nothing else" \
-  'gh_true "[v[\"name\"] for v in b[\"views\"]] == [\"Now · Next · Later\", \"Inbox\", \"Needs you\", \"Roadmap\", \"In order\", \"Now\", \"Next\", \"Later\"]"'
+expect "with --yes, only Inbox, Needs you and Roadmap are left" \
+  'gh_true "[v[\"name\"] for v in b[\"views\"]] == [\"Inbox\", \"Needs you\", \"Roadmap\"]"'
 gh_set 'i["11"]["state"] = "CLOSED"; i["14"]["parent"] = 3; i["15"]["title"] = "Brighter bulbs"; b["items"]["14"]["values"]["Horizon"] = "Now"'
 sed -i '' -e '/A closed bug/d' docs/phases/1-lights.md
 printf '# Phase 2: Ad blocking\n\n**Milestone:** Phase 2: Ad blocking that holds up · **Status:** Now\n\n- #14, Enhanced ad blocking.\n' >docs/phases/2-ads.md
