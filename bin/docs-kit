@@ -1901,7 +1901,11 @@ def sync(plan: Plan, pages: dict[str, dict], dry: bool, setup: bool = False) -> 
             if theirs is not None and mine != theirs:
                 ch.value(i, key, theirs, f"from #{item['number']}")
 
-    # Each phase's own values from its items, and open while it has work.
+    # Each phase's own values from its items, and open while it has work, with a Status that
+    # isn't Done (the board's first other one, Todo).
+    status_field = p.board_fields.get(p.fields.get("status") or "") or {}
+    open_status = next((o["name"] for o in status_field.get("options", []) if o["name"] != p.done), None) \
+        if p.done in {o["name"] for o in status_field.get("options", [])} else None
     def items_under(phase: dict) -> list[dict]:
         return [i for i in p.open_work() if p.level(i) == "Item" and phase in p.ancestors(i)]
     for milestone, phase in sorted(phases.items(), key=lambda kv: kv[1]["number"]):
@@ -1914,6 +1918,10 @@ def sync(plan: Plan, pages: dict[str, dict], dry: bool, setup: bool = False) -> 
             ch.state(phase, False, "everything in it is done")
         if phase["state"] != "OPEN":
             continue
+        # An open phase isn't Done: the board's own workflow closes a Done issue again at its
+        # next change (#78).
+        if open_status and phase["item"] and phase["values"].get("status") == p.done:
+            ch.value(phase, "status", open_status, "it's open again, and the board closes what's Done")
         horizons = [i["values"].get("horizon") for i in items if i["values"].get("horizon") in p.horizons]
         sums = {"horizon": min(horizons, key=p.horizons.index) if horizons else None}
         for key, pick in (("order", min), ("start", min), ("target", max)):

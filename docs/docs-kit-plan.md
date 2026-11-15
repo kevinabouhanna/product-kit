@@ -68,7 +68,8 @@ or not.
    back when its label comes off; copies items' values to their steps; sets each phase's values
    from its items.
 6. Closes a phase issue when nothing under it or in its milestone is open, and reopens it when
-   something is. Sets closed issues Done.
+   something is, with its Status Todo (a board closes an issue that's Done the next time it
+   changes). Sets closed issues Done.
 7. Writes the root issue's and the phase issues' descriptions, the pages' Status lines and the
    index.
 

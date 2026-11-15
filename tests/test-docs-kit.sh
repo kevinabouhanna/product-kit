@@ -408,9 +408,11 @@ out="$("$KIT" plan sync 2>&1)"
 expect "when a phase's work is all done, sync closes its issue, and its page says Done" \
   '[ "$(gh_state "i[\"$p2\"][\"state\"]")" = "CLOSED" ] && grep -q "Status:\*\* Done" docs/phases/2-two.md && grep -qF "#$p2 Phase 2: Two: closed, everything in it is done" <<<"$out"'
 expect "it never closes an item or a step" '! grep -E "#1[0-9] .*: closed" <<<"$out"'
+expect "a closed phase is Done on the board" 'gh_true "b[\"items\"][\"$p2\"][\"values\"][\"Status\"] == \"Done\""'
 gh_set 'i["12"]["state"] = "OPEN"'
 "$KIT" plan sync >/dev/null
-expect "work reopened in it reopens the phase" '[ "$(gh_state "i[\"$p2\"][\"state\"]")" = "OPEN" ]'
+expect "work reopened in it reopens the phase, and it's Todo again, not Done (#78)" \
+  'gh_true "i[\"$p2\"][\"state\"] == \"OPEN\" and b[\"items\"][\"$p2\"][\"values\"][\"Status\"] == \"Todo\""'
 git checkout -q docs/phases/2-two.md
 "$KIT" plan sync >/dev/null
 
