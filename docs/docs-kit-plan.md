@@ -64,14 +64,17 @@ or not.
 3. Puts each open issue that isn't under a phase under its milestone's phase issue (an open
    step goes with its top-most parent).
 4. Puts everything under a phase in that phase's milestone, and on the board.
-5. Sets each Level; copies items' values to their steps; sets each phase's values from its items.
+5. Sets each Level; moves what [waits on the owner](#what-waits-on-the-owner) to Later, and
+   back when its label comes off; copies items' values to their steps; sets each phase's values
+   from its items.
 6. Closes a phase issue when nothing under it or in its milestone is open, and reopens it when
    something is. Sets closed issues Done.
 7. Writes the root issue's and the phase issues' descriptions, the pages' Status lines and the
    index.
 
 It never deletes anything (but GitHub's starting views, when asked with `--views --yes`), never
-closes an item or a step, and never changes an open issue's Status. It reads GitHub with `gh` (signed in), 100 issues at a time, and writes in batches.
+closes an item or a step, and never changes an open issue's Status. It reads GitHub with `gh`
+(signed in), 100 issues at a time, and writes in batches.
 
 ### What only you can put right
 
@@ -122,6 +125,7 @@ They're warnings: they never fail the check.
 | **In order** | A table of the open items and steps, grouped by Horizon, in Order. |
 | **Now**, **Next**, **Later** | A table per Horizon of its open items and steps, in Order. |
 | **Inbox** | A table of the board's drafts, with their Kind: the owner's inbox (made when it's missing; an "Ideas" view from before is renamed; never otherwise changed). |
+| **Needs you** | A table of the open issues that [wait on the owner](#what-waits-on-the-owner), in Order (made by `sync` when it's missing; never otherwise changed). |
 
 A filter put right keeps the view's layout; the same words in another order are the same
 filter. With `--yes` they also delete GitHub's starting views (above), and only those: a view
@@ -136,8 +140,41 @@ the board's page, if it isn't first already.
 The index (`plan.index`, `docs/phases/README.md`, which GitHub shows under the folder's files)
 and the root issue's description share a table per Horizon (`| Order | Plan | Phase |`, by
 Order, then the milestone's due date, then number) and a Done line of the finished phases. The
-index keeps the text above its first `## ` heading; neither has a date, so each changes only
-when GitHub does.
+root issue also lists what's waiting on the owner. The index keeps the text above its first
+`## ` heading; neither has a date, so each changes only when GitHub does.
+
+## What waits on the owner
+
+The owner testing is the last resort, and they never block the work (Kevin, 2026-11-14,
+home-control#616). Every check Claude can do, Claude does; only what truly needs the owner (their
+phone, their accounts, a purchase, hardware only they can touch, a choice only they can make)
+waits on them. Such an issue, or the part of it that needs them split into its own step:
+
+- gets the **`needs-you`** label, which `plan sync` makes where it's missing ("Waits on Kevin:
+  only Kevin can do or check this. Kept in Later until then.");
+- says what to do in a short section of its description named after the owner, in plain words:
+
+  ```
+  ## Kevin:
+
+  Plug the new plug in and add it in Mi Home on your phone. Nothing else.
+  ```
+
+- goes to **Later**: `plan sync` moves it there, a step too (it doesn't copy its item's Horizon
+  while it waits), and keeps where it was in its description, out of sight
+  (`<!-- docs-kit: before needs-you, Horizon Now -->`). Its Order stays: that's its place.
+
+When the owner has done it, take the label off: `plan sync` puts the issue back in the Horizon
+it had and forgets the note, unless someone has moved it in the meantime. A step goes back with
+its item.
+
+`plan check` lists what's waiting, each with the first words of its section, and warns (never
+fails) about one that doesn't say what the owner should do. The root issue lists them under
+"Waiting on Kevin", and the board's **Needs you** view (`is:open label:needs-you`), made when
+it's missing, shows them.
+
+The owner's name is the first name on the board owner's GitHub profile, or `plan.owner` in the
+config, or "the owner"; the section may also be called "You:" or "Owner:".
 
 ## The Inbox
 
@@ -239,7 +276,8 @@ to `.product-kit.json`, run `docs-kit plan init`, and put `docs-kit plan check` 
 | `project` | The project board: its `owner` (a user or an organization; the repository's owner if left out) and `number`. |
 | `fields` | The board's field names, where they aren't `Order`, `Horizon`, `Level`, `Status` and `Kind`. `start` and `target` are used only when named. |
 | `inherit` | More fields a step copies from its item. |
-| `labels` | `{"plan": "plan", "phase": "phase"}`: the labels, if not these. |
+| `labels` | `{"plan": "plan", "phase": "phase", "needs_you": "needs-you"}`: the labels, if not these. |
+| `owner` | The owner's name, for "Waits on Kevin" and the "Kevin:" section, when their GitHub profile's first name isn't it. |
 | `done` | The Status for closed issues (`Done`). |
 | `no_page` | Open milestones that deliberately have no page; they still get a phase issue. |
 

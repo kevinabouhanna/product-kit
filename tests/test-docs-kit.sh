@@ -309,7 +309,7 @@ expect "then the items by Horizon, each with its phase and phase issue" \
   'grep -qF "| 2 | #10 First plan | [Phase 1: One](https://github.com/someone/thing/blob/main/docs/phases/1-one.md) #$p1 |" <<<"$body" && grep -q "^## Now" <<<"$body"'
 expect "and the finished phases last" 'grep -A2 "^## Done" <<<"$body" | grep -qF "[Phase 0: Start]"'
 expect "the plan's views: made, or their filters put right, with a table per Horizon" \
-  'gh_true "sorted((v[\"name\"], v[\"filter\"]) for v in b[\"views\"]) == [(\"In order\", \"is:open level:Item,Step\"), (\"Inbox\", \"is:draft\"), (\"Issues\", \"no:parent-issue\"), (\"Later\", \"is:open horizon:Later level:Item,Step\"), (\"Next\", \"is:open horizon:Next level:Item,Step\"), (\"Now\", \"is:open horizon:Now level:Item,Step\"), (\"Now · Next · Later\", \"is:open level:Item\"), (\"Roadmap\", \"is:open level:Phase,Item\")]"'
+  'gh_true "sorted((v[\"name\"], v[\"filter\"]) for v in b[\"views\"]) == [(\"In order\", \"is:open level:Item,Step\"), (\"Inbox\", \"is:draft\"), (\"Issues\", \"no:parent-issue\"), (\"Later\", \"is:open horizon:Later level:Item,Step\"), (\"Needs you\", \"is:open label:needs-you\"), (\"Next\", \"is:open horizon:Next level:Item,Step\"), (\"Now\", \"is:open horizon:Now level:Item,Step\"), (\"Now · Next · Later\", \"is:open level:Item\"), (\"Roadmap\", \"is:open level:Phase,Item\")]"'
 expect "GitHub's starting view stays without --yes, and init says --yes would delete it" \
   'grep -qF "the board'"'"'s view \"Issues\" is one of GitHub'"'"'s starting views: \`--views --yes\` deletes it" <<<"$out"'
 expect "a view whose filter is put right keeps its layout" '[ "$(gh_state "[v[\"layout\"] for v in b[\"views\"] if v[\"name\"] == \"Roadmap\"][0]")" = "ROADMAP_LAYOUT" ]'
@@ -489,7 +489,7 @@ issues = [
 def item(n, **values):
     return str(n), {"id": f"PVTI_{n}", "values": values}
 state = {
-    "repo": "someone/thing", "repo_id": "R1", "next": 1000,
+    "repo": "someone/thing", "repo_id": "R1", "next": 1000, "owner_name": "Robin Example",
     "milestones": [{"id": f"M{k}", "number": k, "title": t, "state": "OPEN", "dueOn": None}
                    for k, t in enumerate((P1, P2, P3), 1)],
     "labels": [{"id": "L1", "name": "plan"}, {"id": "L2", "name": "phase"}],
@@ -565,10 +565,10 @@ expect "the board opening on GitHub's starting view" \
 expect "plan status says them too" '"$KIT" plan status | grep -q "5 things to look at"'
 out="$("$KIT" plan sync --views 2>&1)"
 expect "sync --views makes the plan's tables, and only says it would delete GitHub's" \
-  'gh_true "[v[\"name\"] for v in b[\"views\"]] == [\"View 1\", \"Now · Next · Later\", \"Inbox\", \"My items\", \"Roadmap\", \"In order\", \"Now\", \"Next\", \"Later\"]" && grep -qF "\"View 1\" is one of GitHub'"'"'s starting views: \`--views --yes\` deletes it" <<<"$out"'
+  'gh_true "[v[\"name\"] for v in b[\"views\"]] == [\"View 1\", \"Now · Next · Later\", \"Inbox\", \"My items\", \"Needs you\", \"Roadmap\", \"In order\", \"Now\", \"Next\", \"Later\"]" && grep -qF "\"View 1\" is one of GitHub'"'"'s starting views: \`--views --yes\` deletes it" <<<"$out"'
 "$KIT" plan sync --views --yes >/dev/null
 expect "with --yes, GitHub's starting views go, and nothing else" \
-  'gh_true "[v[\"name\"] for v in b[\"views\"]] == [\"Now · Next · Later\", \"Inbox\", \"Roadmap\", \"In order\", \"Now\", \"Next\", \"Later\"]"'
+  'gh_true "[v[\"name\"] for v in b[\"views\"]] == [\"Now · Next · Later\", \"Inbox\", \"Needs you\", \"Roadmap\", \"In order\", \"Now\", \"Next\", \"Later\"]"'
 gh_set 'i["11"]["state"] = "CLOSED"; i["14"]["parent"] = 3; i["15"]["title"] = "Brighter bulbs"; b["items"]["14"]["values"]["Horizon"] = "Now"'
 sed -i '' -e '/A closed bug/d' docs/phases/1-lights.md
 printf '# Phase 2: Ad blocking\n\n**Milestone:** Phase 2: Ad blocking that holds up · **Status:** Now\n\n- #14, Enhanced ad blocking.\n' >docs/phases/2-ads.md
@@ -576,6 +576,38 @@ printf '# Phase 2: Ad blocking\n\n**Milestone:** Phase 2: Ad blocking that holds
 out="$("$KIT" plan check 2>&1)"; status=$?
 expect "once each is put right, nothing to look at" '[ $status -eq 0 ] && ! grep -q "to look at" <<<"$out"'
 [ $status -eq 0 ] && ! grep -q "to look at" <<<"$out" || echo "$out"
+git add -A && git commit -qm "put right"
+
+echo "--- plan: what waits on the owner (#74)"
+expect "the needs-you label, made once, in the owner's name from their GitHub profile" \
+  'gh_true "[l.get(\"description\") for l in s[\"labels\"] if l[\"name\"] == \"needs-you\"] == [\"Waits on Robin: only Robin can do or check this. Kept in Later until then.\"]" && grep -q "POST repos/someone/thing/labels" "$G/github.log" && grep -q "GET users/someone" "$G/github.log"'
+expect "and a Needs you view, made once" 'gh_true "[v[\"filter\"] for v in b[\"views\"] if v[\"name\"] == \"Needs you\"] == [\"is:open label:needs-you\"]"'
+gh_set 'i["10"]["labels"].append("needs-you"); i["17"]["labels"].append("needs-you"); i["15"]["labels"].append("needs-you"); i["20"] = {"id": "I20", "number": 20, "title": "Try it on the real thing", "state": "OPEN", "milestone": "Phase 2: Ad blocking that holds up", "parent": 14, "labels": ["needs-you"], "body": "## Why\n\nIt needs the phone.\n\n## Robin:\n\n1. Plug the phone in and say yes."}'
+out="$("$KIT" plan check 2>&1)"
+expect "a needs-you issue outside Later: check says sync would move it" 'grep -qF "#10 Keep the tooling in order: Horizon Later (it waits on Robin: needs-you)" <<<"$out"'
+"$KIT" plan sync >/dev/null
+expect "sync moves it to Later, and its description remembers where it was" \
+  'gh_true "b[\"items\"][\"10\"][\"values\"][\"Horizon\"] == \"Later\" and i[\"10\"][\"body\"].endswith(\"<!-- docs-kit: before needs-you, Horizon Now -->\")"'
+expect "a needs-you step waits in Later too, not with its item" \
+  'gh_true "b[\"items\"][\"20\"][\"values\"].get(\"Horizon\") == \"Later\" and b[\"items\"][\"20\"][\"values\"].get(\"Level\") == \"Step\" and b[\"items\"][\"14\"][\"values\"][\"Horizon\"] == \"Now\""'
+expect "one already in Later stays as it is" 'gh_true "\"before needs-you\" not in i[\"17\"][\"body\"]"'
+body="$(gh_state 'i["1"]["body"]')"
+expect "the plan's issue lists what waits on the owner, in order" \
+  'grep -A9 "^## Waiting on Robin" <<<"$body" | grep "^- #" | tr "\n" ";" | grep -qxF -e "- #10 Keep the tooling in order;- #20 Try it on the real thing;- #15 Brighter bulbs;- #17 Far away;" && grep -A4 "^## Waiting on Robin" <<<"$body" | grep -qF "Only Robin can do or check these (\`needs-you\`), so they wait in Later:"'
+printf '\n- #15 waits on Robin.\n' >>docs/phases/1-lights.md
+out="$("$KIT" plan check 2>&1)"; status=$?
+expect "check passes, and lists them with what each asks" \
+  '[ $status -eq 0 ] && grep -qF "4 waiting on Robin (needs-you), kept in Later:" <<<"$out" && grep -qF "  - #20 Try it on the real thing. Robin: Plug the phone in and say yes." <<<"$out"'
+[ $status -eq 0 ] || echo "$out"
+expect "and warns about each that doesn't say what the owner should do" \
+  'grep -qF "#10 Keep the tooling in order waits on Robin (needs-you) and doesn'"'"'t say what Robin should do: add a short \"**Robin:**\" section" <<<"$out" && ! grep -q "#20 Try it.*doesn'"'"'t say" <<<"$out"'
+gh_set 'i["10"]["labels"].remove("needs-you"); i["20"]["labels"].remove("needs-you"); i["15"]["labels"].remove("needs-you"); b["items"]["15"]["values"]["Horizon"] = "Now"'
+"$KIT" plan sync >/dev/null
+expect "the label off: it goes back where it was, and its description forgets" \
+  'gh_true "b[\"items\"][\"10\"][\"values\"][\"Horizon\"] == \"Now\" and \"before needs-you\" not in i[\"10\"][\"body\"] and i[\"10\"][\"body\"] == \"\""'
+expect "a step goes back with its item" 'gh_true "b[\"items\"][\"20\"][\"values\"][\"Horizon\"] == \"Now\" and \"before needs-you\" not in i[\"20\"][\"body\"]"'
+expect "one moved by hand since stays where it was put" 'gh_true "b[\"items\"][\"15\"][\"values\"][\"Horizon\"] == \"Now\" and \"before needs-you\" not in i[\"15\"][\"body\"]"'
+expect "and check passes" '"$KIT" plan check >/dev/null'
 cd "$P" || exit 1
 
 echo "--- the rest"
