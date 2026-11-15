@@ -320,11 +320,11 @@ expect "a Kind field: Bug, Feature, Idea, Research" \
   '[ "$(gh_state "[o[\"name\"] for f in b[\"fields\"] if f[\"name\"] == \"Kind\" for o in f[\"options\"]]")" = "['"'"'Bug'"'"', '"'"'Feature'"'"', '"'"'Idea'"'"', '"'"'Research'"'"']" ]'
 expect "the Ideas view renamed Inbox in place, still a table, now showing the Kind" \
   '[ "$(gh_state "[(v[\"name\"], v[\"layout\"], v[\"fields\"]) for v in b[\"views\"] if v[\"id\"] == \"V3\"]")" = "[('"'"'Inbox'"'"', '"'"'TABLE_LAYOUT'"'"', ['"'"'F1'"'"', '"'"'$kind'"'"'])]" ]'
-expect "and showing what isn't in the plan yet, a draft or an issue made on the board, not only drafts (#98)" \
-  '[ "$(gh_state "[v[\"filter\"] for v in b[\"views\"] if v[\"id\"] == \"V3\"]")" = "['"'"'is:open no:level'"'"']" ]'
+expect "and, once the board has a Level, showing what isn't in the plan yet, a draft or an issue made on the board (#98)" \
+  '[ "$(gh_state "[v[\"filter\"] for v in b[\"views\"] if v[\"id\"] == \"V3\"]")" = "['"'"'is:open no:level no:milestone -is:pr'"'"']" ] && grep -qF "the board'"'"'s view \"Inbox\": filter \"is:open no:level no:milestone -is:pr\" (was \"is:draft\")" <<<"$out"'
 out="$("$KIT" plan sync --views --yes 2>&1)"
 expect "sync --views --yes: just the plan's three, in order: Inbox, Needs you, Roadmap (#88)" \
-  'gh_true "[(v[\"name\"], v[\"filter\"]) for v in b[\"views\"]] == [(\"Inbox\", \"is:open no:level\"), (\"Needs you\", \"is:open label:needs-you\"), (\"Roadmap\", \"is:open level:Item\")]" && grep -qF "the board'"'"'s view \"Issues\": deleted" <<<"$out"'
+  'gh_true "[(v[\"name\"], v[\"filter\"]) for v in b[\"views\"]] == [(\"Inbox\", \"is:open no:level no:milestone -is:pr\"), (\"Needs you\", \"is:open label:needs-you\"), (\"Roadmap\", \"is:open level:Item\")]" && grep -qF "the board'"'"'s view \"Issues\": deleted" <<<"$out"'
 expect "the Roadmap is a board of the items, a column per Horizon, sorted by Order; a timeline from before made again" \
   'gh_true "[(v[\"layout\"], v[\"vertical_group_by\"], v[\"sort_by\"]) for v in b[\"views\"] if v[\"name\"] == \"Roadmap\"] == [(\"BOARD_LAYOUT\", [4], [[3, \"asc\"]])]"'
 index="$(cat docs/phases/README.md)"
@@ -373,8 +373,10 @@ expect "it says where it went, and that the page should mention it" \
   'grep -qF "is now #$n Wake up to music, an item of #$p1 Phase 1: One, a Bug" <<<"$out" && grep -qF "blocked by #12" <<<"$out" && grep -qF "Now say on docs/phases/1-one.md what #$n is" <<<"$out"'
 expect "plan check then asks for the mention" 'plan_fails "doesn'"'"'t mention #$n Wake up to music"'
 printf 'Next: #%s.\n' "$n" >>docs/phases/1-one.md
+gh_set 'b["drafts"]["PVTI_d1"]["body"] = "Dark at night."'
 "$KIT" plan inbox --take PVTI_d1 --phase "Phase 1: One" --parent 10 --kind Research >/dev/null
 m="$(gh_state 'max(int(x) for x in i)')"
+expect "a draft taken with no spec keeps its note as the description" '[ "$(gh_state "i[\"$m\"][\"body\"]")" = "Dark at night." ]'
 expect "with --parent, a step of that item: it copies the item's Horizon; --kind sets the Kind" \
   '[ "$(gh_state "(i[\"$m\"][\"parent\"], [b[\"items\"][\"$m\"][\"values\"].get(k) for k in (\"Level\", \"Horizon\", \"Kind\")], i[\"$m\"][\"labels\"])")" = "(10, ['"'"'Step'"'"', '"'"'Now'"'"', '"'"'Research'"'"'], [])" ]'
 out="$("$KIT" plan inbox --take '#15' --phase "Ideas" --horizon Later --order 9 2>&1)"
@@ -578,7 +580,7 @@ printf '# Phase 2: Ad blocking\n\n**Milestone:** Phase 2: Ad blocking that holds
 printf '# Phase 3: Later things\n\n**Milestone:** Phase 3: Later things · **Status:** Later\n\n| Order | Plan |\n|---|---|\n| 9 | #17 Far away |\n' >docs/phases/3-later.md
 out="$("$KIT" plan sync 2>&1)"
 expect "an Inbox of the drafts only gets the filter that shows an issue made on the board too, still a table (#98)" \
-  'gh_true "[(v[\"filter\"], v[\"layout\"]) for v in b[\"views\"] if v[\"name\"] == \"Inbox\"] == [(\"is:open no:level\", \"TABLE_LAYOUT\")]" && grep -qF "the board'"'"'s view \"Inbox\": filter \"is:open no:level\" (was \"is:draft\"), so an issue made on the board shows there too" <<<"$out"'
+  'gh_true "[(v[\"filter\"], v[\"layout\"]) for v in b[\"views\"] if v[\"name\"] == \"Inbox\"] == [(\"is:open no:level no:milestone -is:pr\", \"TABLE_LAYOUT\")]" && grep -qF "the board'"'"'s view \"Inbox\": filter \"is:open no:level no:milestone -is:pr\" (was \"is:draft\"), so an issue made on the board shows there too" <<<"$out"'
 git add -A && git commit -qm plan
 out="$("$KIT" plan check 2>&1)"; status=$?
 expect "the pages and GitHub agree, so check passes, and says what to look at" \
@@ -626,7 +628,7 @@ expect "and a Needs you view, made once" 'gh_true "[v[\"filter\"] for v in b[\"v
 gh_set 'b["views"] = [v for v in b["views"] if v["name"] != "Inbox"]'
 out="$("$KIT" plan sync 2>&1)"
 expect "a board with no Inbox gets one: a table of what isn't in the plan yet, with the Kind (#98)" \
-  'gh_true "[(v[\"filter\"], v[\"layout\"], v[\"visible_fields\"]) for v in b[\"views\"] if v[\"name\"] == \"Inbox\"] == [(\"is:open no:level\", \"TABLE_LAYOUT\", [1, 7])]" && grep -qF "the board'"'"'s view \"Inbox\": made (is:open no:level" <<<"$out"'
+  'gh_true "[(v[\"filter\"], v[\"layout\"], v[\"visible_fields\"]) for v in b[\"views\"] if v[\"name\"] == \"Inbox\"] == [(\"is:open no:level no:milestone -is:pr\", \"TABLE_LAYOUT\", [1, 7])]" && grep -qF "the board'"'"'s view \"Inbox\": made (is:open no:level no:milestone -is:pr" <<<"$out"'
 gh_set 'i["10"]["labels"].append("needs-you"); i["17"]["labels"].append("needs-you"); i["17"]["body"] = "## Steps\n\n0. **Robin:** pick the colour.\n1. Paint it."; i["15"]["labels"].append("needs-you"); i["20"] = {"id": "I20", "number": 20, "title": "Try it on the real thing", "state": "OPEN", "milestone": "Phase 2: Ad blocking that holds up", "parent": 14, "labels": ["needs-you"], "body": "## Why\n\nIt needs the phone.\n\n## Robin:\n\n1. Plug the phone in and say yes."}'
 out="$("$KIT" plan check 2>&1)"
 expect "a needs-you issue outside Later: check says sync would move it" 'grep -qF "#10 Keep the tooling in order: Horizon Later (it waits on Robin: needs-you)" <<<"$out"'

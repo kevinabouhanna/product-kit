@@ -148,7 +148,7 @@ Every board has three views, the same on every project, in this order (Kevin, 20
 
 | View | Shows |
 |---|---|
-| **Inbox** | A table of what the owner adds by hand, with its Kind, until "scan the inbox" takes it into the plan: `is:open no:level`, every draft and every issue made on the board that isn't in the plan yet (#98). Made by `sync` when it's missing (an "Ideas" view from before is renamed), or its filter put right (`is:draft`, from before, hid an issue made there). |
+| **Inbox** | A table of what the owner adds by hand, with its Kind, until "scan the inbox" takes it into the plan: `is:open no:level no:milestone -is:pr`, every draft and every issue made on the board that isn't in the plan yet (#98). An issue of the plan has a Level, or a milestone until `sync` gives it one. Made by `sync` when it's missing (an "Ideas" view from before is renamed), or its filter put right (`is:draft`, from before, hid an issue made there), the same on every board. |
 | **Needs you** | A table of the open issues that [wait on the owner](#what-waits-on-the-owner), in Order. Made by `sync` when it's missing; never otherwise changed. |
 | **Roadmap** | The whole plan: a board of the open items, a column each for Now, Next and Later, in Order. Made by `plan init` and `plan sync --views`, or its filter put right. |
 

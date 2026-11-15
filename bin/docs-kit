@@ -1082,7 +1082,8 @@ class Plan:
     def issue_fields(self) -> str:
         values = " ".join(f"v_{key}: fieldValueByName(name: {q(name)}) {{ {VALUE} }}"
                           for key, name in self.read_fields().items())
-        return ("id number title state body isPinned milestone { number title } parent { number state } "
+        return ("id number title state body isPinned createdAt author { login } milestone { number title } "
+                "parent { number state } "
                 "subIssuesSummary { total completed } labels(first: 20) { nodes { name } } "
                 "projectItems(first: 20) { nodes { id project { number owner { ... on User { login } ... on Organization { login } } } " + values + " } }")
 
@@ -1181,6 +1182,7 @@ query($owner: String!, $name: String!, $board: String!, $number: Int!, $after: S
         self.issues[node["number"]] = {
             "id": node["id"], "number": node["number"], "title": node["title"].strip(), "state": node["state"],
             "body": node.get("body") or "", "pinned": node.get("isPinned", False),
+            "created": node.get("createdAt") or "", "by": (node.get("author") or {}).get("login", ""),
             "milestone": (node.get("milestone") or {}).get("title"),
             "parent": parent.get("number"), "labels": {label["name"] for label in node["labels"]["nodes"]},
             "item": (item or {}).get("id"), "values": values,
@@ -1203,9 +1205,8 @@ query($owner: String!, $name: String!, $board: String!, $number: Int!, $after: S
         kind = value("kind", "v_kind")
         level = value("level", "v_level")
         query = ("query($id: ID!, $after: String) { node(id: $id) { ... on ProjectV2 { items(first: 100, after: $after) "
-                 "{ pageInfo { hasNextPage endCursor } nodes { id type content { ... on Issue { number state title body "
-                 "createdAt author { login } repository { nameWithOwner } } "
-                 "... on DraftIssue { title body createdAt creator { login } } } "
+                 "{ pageInfo { hasNextPage endCursor } nodes { id type content { ... on Issue { number state "
+                 "repository { nameWithOwner } } ... on DraftIssue { title body createdAt creator { login } } } "
                  + status + kind + level + " } } } } }")
         self.scanned, self.entries, after = [], [], None
         while True:
@@ -1214,18 +1215,20 @@ query($owner: String!, $name: String!, $board: String!, $number: Int!, $after: S
                 break
             for node in items["nodes"]:
                 content = node.get("content") or {}
-                entry = {"item": node["id"], "title": (content.get("title") or "").strip(),
-                         "note": (content.get("body") or "").strip(), "added": content.get("createdAt") or "",
-                         "by": (content.get("creator") or content.get("author") or {}).get("login", ""),
-                         "kind": (node.get("v_kind") or {}).get("name")}
+                kind_of = (node.get("v_kind") or {}).get("name")
                 if node.get("type") == "DRAFT_ISSUE":
-                    self.entries.append(entry)
+                    self.entries.append({"item": node["id"], "title": (content.get("title") or "").strip(),
+                                         "note": (content.get("body") or "").strip(),
+                                         "added": content.get("createdAt") or "",
+                                         "by": (content.get("creator") or {}).get("login", ""), "kind": kind_of})
                 elif (content.get("repository") or {}).get("nameWithOwner", "").lower() == self.p.repo.lower():
                     self.scanned.append({"item": node["id"], "number": content["number"], "state": content["state"],
                                          "status": (node.get("v_status") or {}).get("name")})
-                    if level and content["state"] == "OPEN" and not node.get("v_level") \
-                            and self.outside(content["number"]):
-                        self.entries.append({**entry, "issue": content["number"]})
+                    i = self.issues.get(content["number"])
+                    if level and not node.get("v_level") and self.outside(content["number"]):
+                        self.entries.append({"item": node["id"], "title": i["title"], "note": i["body"].strip(),
+                                             "added": i.get("created", ""), "by": i.get("by", ""), "kind": kind_of,
+                                             "issue": i["number"]})
             if not items["pageInfo"]["hasNextPage"]:
                 break
             after = items["pageInfo"]["endCursor"]
@@ -1552,13 +1555,15 @@ query($owner: String!, $name: String!, $board: String!, $number: Int!, $after: S
                                  "which isn't the plan or a phase")
         inbox = self.waiting_in_inbox()
         for i in self.open_work():
-            if self.phase_of(i) or i["number"] in inbox:  # an Inbox entry waits for "scan the inbox"
+            if self.phase_of(i):
                 continue
             chain = [i] + list(self.ancestors(i))
             if any(self.plan_label in a["labels"] for a in chain):
                 found.append(f"#{i['number']} {i['title']} is under the plan but no phase: "
                              "make it a sub-issue of a phase issue")
-            elif not (chain[-1]["milestone"] or i["milestone"]):
+            elif self.outside(i["number"]):
+                if i["number"] in inbox:  # an Inbox entry waits for "scan the inbox", never a failure
+                    continue
                 found.append(f"#{i['number']} {i['title']} isn't in the plan: give it a milestone (its phase), "
                              "or make it a sub-issue of an item, then run `docs-kit plan sync`")
             else:
@@ -2211,9 +2216,13 @@ def needs_view(p: Plan, dry: bool) -> list[str]:
 
 
 def inbox_filter(p: Plan) -> str:
-    """What the Inbox shows: everything open on the board that isn't in the plan yet, a draft
-    or an issue made there (#98). Every issue of the plan has a Level; neither of those has."""
-    return f"is:open no:{p.fields['level'].lower()}"
+    """What the Inbox shows: what's open on the board and not in the plan yet, a draft or an
+    issue made there (#98). Every issue of the plan has a Level, or a milestone until sync gives
+    it one; neither of those has, nor a pull request. Before the board has a Level: the drafts."""
+    level = p.fields.get("level")
+    if not level or level not in p.board_fields:
+        return "is:draft"
+    return f"is:open no:{level.lower()} no:milestone -is:pr"
 
 
 def inbox_board(p: Plan, dry: bool) -> list[str]:
@@ -2385,11 +2394,12 @@ def inbox(project: Project, p: Plan, pages: dict[str, dict], rest: list[str]) ->
         values[name] = value
     waits = blockers(p, rest)
     body_file = option("--body-file")
-    # The entry's own words stay unless a spec takes their place (a draft's go with it).
-    body = f", body: {q(pathlib.Path(body_file).read_text(encoding='utf-8'))}" if body_file else ""
+    had = p.issues.get(draft.get("issue") or 0)
+    # The spec, or the entry's own words: an issue's stay as they are, a draft's note is written.
+    body = pathlib.Path(body_file).read_text(encoding="utf-8") if body_file else None if had else draft["note"]
+    body = f", body: {q(body)}" if body is not None else ""
     title = option("--title") or draft["title"]
 
-    had = p.issues.get(draft.get("issue") or 0)
     if had:  # an issue made on the board: already one, on the board
         issue, item = {"id": had["id"], "number": had["number"]}, draft["item"]
     else:

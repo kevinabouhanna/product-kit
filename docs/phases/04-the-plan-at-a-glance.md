@@ -27,7 +27,7 @@ and maybe description, and then it should be added to the list."
 ## Now
 
 - **#98 The Inbox shows an issue made on the board, not only drafts**: its filter shows
-  everything not in the plan yet (`is:open no:level`); `plan inbox` lists those issues and
+  everything not in the plan yet (`is:open no:level no:milestone -is:pr`); `plan inbox` lists those issues and
   `--take` places one as it is; `plan check` no longer fails on one.
 
 ## What shipped (15 Nov 2026)
