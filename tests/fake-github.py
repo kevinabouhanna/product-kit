@@ -181,7 +181,8 @@ def read(query: str, fields: dict) -> dict:
             board = {"id": B["id"], "title": B["title"],
                      "fields": {"nodes": [{k: v for k, v in f.items()} for f in B["fields"]]},
                      "views": {"nodes": [{**v, "fields": {"nodes": [{"id": x} for x in v.get("fields", [])]}}
-                                         for v in B["views"]]}}
+                                         for v in B["views"]]},
+                     "workflows": {"nodes": B.get("workflows", [])}}
         return {"repository": {
             "id": S["repo_id"],
             "milestones": {"nodes": S["milestones"]},
@@ -294,6 +295,9 @@ def mutate(query: str) -> dict:
                 view["fields"] = list(v["configuration"]["visibleFieldIds"])
             # As GitHub seems to: a change without the layout can put a view back to a board.
             view["layout"] = v.get("layout", "BOARD_LAYOUT")
+            out[alias] = {"clientMutationId": None}
+        elif name == "deleteProjectV2Workflow":
+            B["workflows"] = [x for x in B.get("workflows", []) if x["id"] != v["workflowId"]]
             out[alias] = {"clientMutationId": None}
         elif name == "deleteProjectV2View":
             B["views"] = [x for x in B["views"] if x["id"] != v["viewId"]]
