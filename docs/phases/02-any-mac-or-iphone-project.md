@@ -1,6 +1,6 @@
 # Phase 2: Any Mac or iPhone project
 
-**Milestone:** Phase 2: Any Mac or iPhone project · **Status:** Done
+**Milestone:** Phase 2: Any Mac or iPhone project · **Status:** Next
 
 **Goal:** tools that work for any Mac or iPhone project, a new project set up in one command,
 and everything it shows people (docs, pictures, videos, languages, store pages) kept current by
@@ -77,7 +77,7 @@ The phase issue is #30, where this was planned.
   (`tests/test-prove.sh`); NetworkMonitor, claude-profiles-mac and home-control on the current
   kit, what's left in each with its issue.
 
-## The items
+## The items, all done
 
 Now: make it generic.
 
@@ -105,6 +105,11 @@ Later: videos, store pages, web views, the proof.
 - #45 App Store pages and release notes, in every language.
 - #46 Apps built on web views (home-control), and the website itself checked.
 - #47 Prove it: a new project from nothing, and every project current.
+
+## Still open
+
+- **#86 The iPhone pictures' test fails now and then** (15 Nov): two of its checks failed on one
+  CI run and passed on the next, with nothing changed.
 
 ## Not in this phase
 

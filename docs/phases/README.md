@@ -3,6 +3,12 @@
 
 Each phase is a milestone on GitHub and a page here; each plan is an issue, in the order of the project board.
 
+## Next
+
+| Order | Plan | Phase |
+|---|---|---|
+| 17.5 | #86 test-ios fails now and then: "more rows and a new time change nothing" | [Phase 2: Any Mac or iPhone project](02-any-mac-or-iphone-project.md) |
+
 ## Later
 
 | Order | Plan | Phase |
@@ -12,5 +18,4 @@ Each phase is a milestone on GitHub and a page here; each plan is an issue, in t
 ## Done
 
 [Phase 1: Out of NetworkMonitor](01-out-of-networkmonitor.md) ·
-[Phase 2: Any Mac or iPhone project](02-any-mac-or-iphone-project.md) ·
 [Phase 4: The plan at a glance](04-the-plan-at-a-glance.md)
