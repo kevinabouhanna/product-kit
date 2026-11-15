@@ -20,7 +20,7 @@ the interface changed) → videos → publish (README, wiki, website) → native
 | When | Run | And |
 |---|---|---|
 | A new project | `product-kit init --name … --pitch "…" --languages … --site …`; then write the plan's pages with the owner and `docs-kit plan init` | `product-kit doctor` |
-| The plan changes (a new issue, a new order, a phase done) | `docs-kit plan sync`, then `docs-kit plan check`, which must pass | Mention each new item (`#N`) on its phase's page; a new item is a sub-issue of its phase issue |
+| The plan changes (a new issue, a new order, a phase done) | `docs-kit plan sync`, then `docs-kit plan check`, which must pass | Mention each new item (`#N`) on its phase's page; a new item is a sub-issue of its phase issue. Put right what it lists "to look at" (Now empty, an umbrella, a closed issue listed as open, GitHub's starting views: `plan sync --views --yes`), or say why not |
 | The owner says "scan the inbox" | `docs-kit plan inbox` | Follow [Scan the inbox](../../docs/docs-kit-plan.md#scan-the-inbox); never take an entry in unasked |
 | The app's text changes | `lang-kit todo`: translate only the packet, then `lang-kit apply <file>` | `docs-kit todo` names the paragraphs to change, and their copies |
 | An English page changes | Its copy in every language, in the same pull request (`lang-kit check`) | Deliberately English only: `No translation needed: <why>` in the pull request |
