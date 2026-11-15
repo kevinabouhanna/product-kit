@@ -1,6 +1,6 @@
 # Phase 4: The plan at a glance
 
-**Milestone:** Phase 4: The plan at a glance · **Status:** Done
+**Milestone:** Phase 4: The plan at a glance · **Status:** Now
 
 **Goal:** every project's plan says at a glance what comes next and what waits on its owner, and
 `docs-kit plan` keeps it that way by itself, instead of a session putting it right by hand.
@@ -18,6 +18,12 @@ Later.
 Then, after comparing a teammate's "software factory" for Claude Code (2026-11-15): every
 ticket there gets numbered acceptance criteria before any code, and its pull request names the
 test that proves each. Here, an item says **Done when** the same way.
+
+## What's left
+
+- **#93 The board's workflows, the same few everywhere** (Kevin: "take care of the github
+  workflows point"): five that keep an issue's Status right, on every board; Auto-close issue
+  (which closed phase 4 three times, #78) and Auto-add to project deleted.
 
 ## What shipped (15 Nov 2026)
 

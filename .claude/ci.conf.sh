@@ -22,3 +22,16 @@ ci_job_plan() {
     echo "plan: skipped, because gh isn't signed in to GitHub here, so the plan can't be read"
   fi
 }
+
+# The finish gate's quick check (claude-parallel-sessions#146): before a session may stop its turn
+# with changes, the tests that need no Swift build, browser or simulator, about 26 s. Each runs
+# even when one before it failed, so the session sees every failure at once.
+ci_quick() {
+  local status=0 t
+  cd tests
+  for t in test-product-kit.sh test-docs-kit.sh test-lang-kit.sh; do
+    ./"$t" || status=1
+  done
+  python3 -I ./test-generic.py || status=1
+  return "$status"
+}
