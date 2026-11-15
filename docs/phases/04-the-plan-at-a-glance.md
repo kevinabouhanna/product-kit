@@ -1,6 +1,6 @@
 # Phase 4: The plan at a glance
 
-**Milestone:** Phase 4: The plan at a glance · **Status:** Now
+**Milestone:** Phase 4: The plan at a glance · **Status:** Done
 
 **Goal:** every project's plan says at a glance what comes next and what waits on its owner, and
 `docs-kit plan` keeps it that way by itself, instead of a session putting it right by hand.
@@ -19,18 +19,15 @@ Then, after comparing a teammate's "software factory" for Claude Code (2026-11-1
 ticket there gets numbered acceptance criteria before any code, and its pull request names the
 test that proves each. Here, an item says **Done when** the same way.
 
-## What's left
-
-- **#90 Every item says when it's done:** numbered **Done when** points in every item's
-  description, `plan check` says when an item in Now or Next has none, and the pull request
-  takes each point with the test or check that proves it.
-
 ## What shipped (15 Nov 2026)
 
+- **Every item says when it's done** (#90, tools 2.13.0): numbered **Done when** points in
+  every item's description, written the same way for a request made in a session; `plan check`
+  lists an item in Now or Next that has none; the pull request takes each point with the test or
+  check that proves it.
 - **Three views on every board** (#88, tools 2.12.0): Inbox, Needs you and the Roadmap, in that
   order, and nothing else; a request made in a session goes straight into the plan, with no
   Inbox entry.
-
 - **A "Kevin:" step in a list says what to do** (#83, tools 2.11.2): home-control#359 and #280
   say it as a step of a numbered list, which `plan check` now counts.
 - **Found rolling it out** (#80, tools 2.11.1): the closed-issue warning counts only lists of
