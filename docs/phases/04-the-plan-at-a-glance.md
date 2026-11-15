@@ -1,6 +1,6 @@
 # Phase 4: The plan at a glance
 
-**Milestone:** Phase 4: The plan at a glance · **Status:** Now
+**Milestone:** Phase 4: The plan at a glance · **Status:** Done
 
 **Goal:** every project's plan says at a glance what comes next and what waits on its owner, and
 `docs-kit plan` keeps it that way by itself, instead of a session putting it right by hand.
@@ -24,13 +24,12 @@ description with GitHub's **Create new issue**, was hidden at once, because the 
 drafts. "I want the Inbox to be seamless, like any issue I create … I just want to type the title
 and maybe description, and then it should be added to the list."
 
-## Now
-
-- **#98 The Inbox shows an issue made on the board, not only drafts**: its filter shows
-  everything not in the plan yet (`is:open no:level no:milestone -is:pr`); `plan inbox` lists those issues and
-  `--take` places one as it is; `plan check` no longer fails on one.
-
 ## What shipped (15 Nov 2026)
+
+- **The Inbox shows an issue made on the board, not only drafts** (#98, tools 2.14.0): its
+  filter is everything not in the plan yet (`is:open no:level no:milestone -is:pr`), on all
+  five boards; `plan inbox` lists those issues with the drafts and `--take` places one as it
+  is; `plan check` counts one as waiting instead of failing on it.
 
 - **The board's workflows, the same five everywhere** (#93, tools 2.13.1; Kevin: "take care of
   the github workflows point"): the five that keep an issue's Status right, on every board;
