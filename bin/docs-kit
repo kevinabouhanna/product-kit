@@ -53,7 +53,7 @@ import sys
 import time
 import unicodedata
 
-VERSION = "2.13.0"
+VERSION = "2.13.1"
 # The config: product-kit's, shared with lang-kit, or docs-kit's own from before.
 CONFIGS = (".product-kit.json", ".docs-kit.json")
 CONFIG = CONFIGS[0]
@@ -884,6 +884,11 @@ def says_done_when(body: str) -> bool:
 # A board's views, the same on every project, in this order (Kevin, 2026-11-15, #88): what the
 # owner adds, what waits on them, and the plan.
 PLAN_VIEWS = ("Inbox", "Needs you", "Roadmap")
+# GitHub's built-in workflows a board keeps (#93): those that keep an issue's Status right
+# between syncs. Never one that closes an issue (Auto-close issue closed a phase three times,
+# #78), nor one that adds every issue and pull request (sync puts the plan's on the board).
+PLAN_WORKFLOWS = ("Auto-add sub-issues to project", "Item added to project", "Item closed",
+                  "Pull request linked to issue", "Pull request merged")
 # Where a needs-you issue was before it went to Later, kept in its description, out of sight (#74).
 NEEDS_MARK = re.compile(r"\n*<!-- docs-kit: before needs-you, (\w[^>]*?) -->\n*")
 LEVELS = ("Plan", "Phase", "Item", "Step")
@@ -1109,6 +1114,7 @@ query($owner: String!, $name: String!, $board: String!, $number: Int!, $after: S
         }}
         views(first: 50, orderBy: {{ field: POSITION, direction: ASC }}) {{ nodes {{ id number name filter layout
           fields(first: 50) {{ nodes {{ ... on ProjectV2FieldCommon {{ id }} }} }} }} }}
+        workflows(first: 50) {{ nodes {{ id number name enabled }} }}
       }}
     }}
   }}
@@ -1138,6 +1144,7 @@ query($owner: String!, $name: String!, $board: String!, $number: Int!, $after: S
         self.board_title = board.get("title", "")
         self.board_fields = {f["name"]: f for f in board["fields"]["nodes"] if f.get("name")}
         self.views = board["views"]["nodes"]
+        self.workflows = (board.get("workflows") or {}).get("nodes") or []
         self.milestones = {m["title"]: m for m in repo_first["milestones"]["nodes"]}
         self.labels = {label["name"]: label["id"] for label in repo_first["labels"]["nodes"]}
         self.issues: dict[int, dict] = {}
@@ -1549,6 +1556,10 @@ query($owner: String!, $name: String!, $board: String!, $number: Int!, $after: S
         return [v for v in self.views if (v["name"] not in PLAN_VIEWS and v is not inbox)
                 or (v["name"] == "Roadmap" and v.get("layout") not in (None, "BOARD_LAYOUT"))]
 
+    def other_workflows(self) -> list[dict]:
+        """The board's workflows that are on and aren't the plan's five (#93)."""
+        return [w for w in getattr(self, "workflows", []) if w.get("enabled") and w["name"] not in PLAN_WORKFLOWS]
+
     def states(self, numbers: set[int]) -> dict[int, dict]:
         """Each issue's state, title and milestone, read from GitHub where the plan hasn't it."""
         known = {n: self.issues[n] for n in numbers if n in self.issues}
@@ -1661,6 +1672,11 @@ query($owner: String!, $name: String!, $board: String!, $number: Int!, $after: S
                 what.append("no " + " or ".join(f"\"{n}\"" for n in missing))
             found.append(f"the board has {' and '.join(what)}: `docs-kit plan sync --views --yes` leaves it with "
                          "just those three, the same on every project")
+        extra = self.other_workflows()
+        if extra:
+            found.append("the board has workflows on besides the plan's five ("
+                         + ", ".join(f"\"{w['name']}\"" for w in extra)
+                         + "): `docs-kit plan sync --views --yes` deletes them, the same on every project")
         for i in self.waiting():
             if not self.asks(i):
                 found.append(f"#{i['number']} {i['title']} waits on {self.who()} ({self.needs_label}) and doesn't "
@@ -2087,8 +2103,20 @@ def views(plan: Plan, dry: bool, delete: bool = False) -> list[str]:
     made, or its filter put right. With `delete`, every view but the plan's three (Inbox, Needs
     you, Roadmap) goes, and a Roadmap that isn't a board is made again; without, it says what
     would. The Inbox is inbox_board's, Needs you needs_view's, and they're made first, so a
-    board's tabs read Inbox, Needs you, Roadmap."""
+    board's tabs read Inbox, Needs you, Roadmap. The board's workflows besides the plan's five
+    go the same way (#93): GitHub's API can delete one, not turn it off."""
     p, said = plan, []
+    for flow in p.other_workflows():
+        if not delete:
+            said.append(f"the board's workflow \"{flow['name']}\" isn't one of the plan's five: "
+                        "`--views --yes` deletes it")
+            continue
+        said.append(f"the board's workflow \"{flow['name']}\": deleted (the plan's are "
+                    + ", ".join(PLAN_WORKFLOWS) + ")")
+        if not dry:
+            gh_graphql(f"mutation {{ deleteProjectV2Workflow(input: {{ workflowId: {q(flow['id'])} }}) "
+                       "{ clientMutationId } }", retry=False)
+        p.workflows.remove(flow)
     others = p.other_views()
     for view in others:
         if not delete:

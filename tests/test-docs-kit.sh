@@ -514,6 +514,9 @@ state = {
                   {"id": "V2", "number": 2, "name": "Now · Next · Later", "filter": "is:open level:Item", "layout": "BOARD_LAYOUT"},
                   {"id": "V3", "number": 3, "name": "Inbox", "filter": "is:draft", "layout": "TABLE_LAYOUT", "fields": ["F1", "F7"]},
                   {"id": "V4", "number": 4, "name": "My items", "filter": "assignee:@me", "layout": "TABLE_LAYOUT"}],
+        "workflows": [{"id": f"W{k}", "number": k, "name": n, "enabled": n != "Item reopened"} for k, n in enumerate((
+            "Auto-add sub-issues to project", "Auto-add to project", "Auto-close issue", "Item added to project",
+            "Item closed", "Item reopened", "Pull request linked to issue", "Pull request merged"), 1)],
         "drafts": {},
     },
 }
@@ -560,7 +563,7 @@ printf '# Phase 3: Later things\n\n**Milestone:** Phase 3: Later things · **Sta
 git add -A && git commit -qm plan
 out="$("$KIT" plan check 2>&1)"; status=$?
 expect "the pages and GitHub agree, so check passes, and says what to look at" \
-  '[ $status -eq 0 ] && grep -q "agree" <<<"$out" && grep -qF "7 things to look at, so the plan says what'"'"'s next (never a failure):" <<<"$out"'
+  '[ $status -eq 0 ] && grep -q "agree" <<<"$out" && grep -qF "8 things to look at, so the plan says what'"'"'s next (never a failure):" <<<"$out"'
 [ $status -eq 0 ] || echo "$out"
 expect "Now holds only the upkeep item: it names the next piece of work" \
   'grep -qF "Now holds only the upkeep item, #10, so the plan doesn'"'"'t say what'"'"'s next: move the next piece of work up (#11 Ad blocking that holds up, say: \`docs-kit plan set 11 Horizon=Now\`)" <<<"$out"'
@@ -577,13 +580,17 @@ expect "an item in Now or Next that doesn't say when it's done (#90)" \
 expect "a \"done when\" inside a sentence, in a code block, or with nothing under it isn't one" \
   'grep -qF "#15 Later: Lights doesn'"'"'t say when" <<<"$out" && grep -qF "#11 Ad blocking that holds up doesn'"'"'t say when" <<<"$out"'
 expect "but not the upkeep item, a step, or Later" '! grep -qE "#(10|14|17) .*doesn.t say when" <<<"$out"'
-expect "plan status says them too" '"$KIT" plan status | grep -q "7 things to look at"'
+expect "workflows on besides the plan's five; one that's off isn't counted (#93)" \
+  'grep -qF "the board has workflows on besides the plan'"'"'s five (\"Auto-add to project\", \"Auto-close issue\"): \`docs-kit plan sync --views --yes\` deletes them" <<<"$out" && ! grep -q "Item reopened" <<<"$out"'
+expect "plan status says them too" '"$KIT" plan status | grep -q "8 things to look at"'
 out="$("$KIT" plan sync --views 2>&1)"
 expect "sync --views makes the Roadmap, and only says it would delete the others" \
-  'gh_true "[v[\"name\"] for v in b[\"views\"]] == [\"View 1\", \"Now · Next · Later\", \"Inbox\", \"My items\", \"Needs you\", \"Roadmap\"]" && grep -qF "\"View 1\" isn'"'"'t one of the plan'"'"'s three: \`--views --yes\` deletes it" <<<"$out"'
+  'gh_true "[v[\"name\"] for v in b[\"views\"]] == [\"View 1\", \"Now · Next · Later\", \"Inbox\", \"My items\", \"Needs you\", \"Roadmap\"] and len(b[\"workflows\"]) == 8" && grep -qF "\"View 1\" isn'"'"'t one of the plan'"'"'s three: \`--views --yes\` deletes it" <<<"$out" && grep -qF "workflow \"Auto-close issue\" isn'"'"'t one of the plan'"'"'s five: \`--views --yes\` deletes it" <<<"$out"'
 "$KIT" plan sync --views --yes >/dev/null
 expect "with --yes, only Inbox, Needs you and Roadmap are left" \
   'gh_true "[v[\"name\"] for v in b[\"views\"]] == [\"Inbox\", \"Needs you\", \"Roadmap\"]"'
+expect "and the plan's five workflows, with the one that was off (#93)" \
+  'gh_true "[w[\"name\"] for w in b[\"workflows\"]] == [\"Auto-add sub-issues to project\", \"Item added to project\", \"Item closed\", \"Item reopened\", \"Pull request linked to issue\", \"Pull request merged\"]"'
 gh_set 'i["11"]["state"] = "CLOSED"; i["14"]["parent"] = 3; i["15"]["title"] = "Brighter bulbs"; b["items"]["14"]["values"]["Horizon"] = "Now"; i["14"]["body"] = "## Why\n\nAds.\n\n> ### ✅ **Done** when\n>\n> - [ ] A page with ads shows none."; i["15"]["body"] = "**Why:** brighter.\r\n\r\n**Done when:**\r\n1. The bulbs are brighter."'
 sed -i '' -e '/A closed bug/d' docs/phases/1-lights.md
 printf '# Phase 2: Ad blocking\n\n**Milestone:** Phase 2: Ad blocking that holds up · **Status:** Now\n\n- #14, Enhanced ad blocking.\n' >docs/phases/2-ads.md

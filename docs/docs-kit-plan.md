@@ -115,7 +115,7 @@ They're warnings: they never fail the check.
   those words, or in an item that says so ("done 14 Nov", "(fixed", struck through, ticked).
 - **A board that isn't the plan's three views:** views besides Inbox, Needs you and Roadmap
   (GitHub's starting ones, "Backlog", "Team items", "My items", or older ones of the plan's), or
-  one of the three missing.
+  one of the three missing; or [workflows](#the-workflows) on besides the plan's five.
 - **An item that doesn't say when it's done** (#90): an open item in Now or Next (the upkeep
   item aside) whose description has no **Done when**: a heading, a label or a line of its own
   that starts with those words (bold, quoted, ticked or with an emoji before them is fine), with
@@ -159,6 +159,26 @@ that was a timeline again as a board; without `--yes` it only says what it would
 
 GitHub's API can't move a view, only make and delete one. The three are made in their order, so
 on a board whose other views are gone they read Inbox, Needs you, Roadmap.
+
+### The workflows
+
+A board has GitHub's built-in workflows (its **Workflows** button). The plan keeps five, the
+same on every board (#93), which keep an issue's Status right between syncs:
+
+| Workflow | Does |
+|---|---|
+| Auto-add sub-issues to project | A new step of an item on the board goes on the board too |
+| Item added to project | Its Status is Todo |
+| Item closed | Its Status is Done |
+| Pull request linked to issue | Its Status is In Progress |
+| Pull request merged | Its Status is Done |
+
+Not these: **Auto-close issue** closes an issue whose Status is set to Done, so an issue would
+close because a field changed (it closed phase 4 three times, #78); an issue closes when its pull
+request merges, and a phase when `plan sync` finds it done. **Auto-add to project** puts every
+new issue and pull request on the board; `plan sync` puts the plan's there itself. `plan check`
+names any other workflow that's on, and `plan sync --views --yes` deletes it with the views:
+GitHub's API can delete a workflow, not turn one off. One that's off is left alone.
 
 ### The index and the root issue
 
