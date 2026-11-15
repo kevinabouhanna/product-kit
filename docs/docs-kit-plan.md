@@ -48,7 +48,7 @@ or not.
 |---|---|
 | `docs-kit plan init [--dry-run]` | Sets a new project up, and is safe to run again: the board's fields (Level, Order, Horizon, and Start and Target when named), a milestone for each page and each page's Milestone line, the labels, the root issue, a phase issue per phase, and the plan's views; then `sync`. |
 | `docs-kit plan sync [--dry-run]` | Makes GitHub follow the tree, and the generated files follow GitHub: see below. Prints every change in plain words; `--dry-run` only prints them. |
-| `docs-kit plan sync --views [--yes]` | The same, and the board's views made or put right ([the views](#the-views)); with `--yes`, GitHub's starting views are deleted. |
+| `docs-kit plan sync --views [--yes]` | The same, and the board's three views made or put right ([the views](#the-views)); with `--yes`, every other view is deleted. |
 | `docs-kit plan check` | Fails when anything `sync` would change, or anything it can't (below). One line when all is well (and one more when entries are waiting in the Inbox, which never fails it), then [what to look at](#what-to-look-at), which never fails it either. For CI. |
 | `docs-kit plan inbox [--json]` | What's waiting in the board's Inbox, oldest first: title, Kind (or "kind not set"), note, when and by whom, item id. `plan ideas` is the same. [The Inbox](#the-inbox). |
 | `docs-kit plan inbox --take <item> --phase "<milestone>" …` | Takes one entry into the plan as an issue, with its spec. [The Inbox](#the-inbox). |
@@ -73,7 +73,7 @@ or not.
 7. Writes the root issue's and the phase issues' descriptions, the pages' Status lines and the
    index.
 
-It never deletes anything (but GitHub's starting views, when asked with `--views --yes`), never
+It never deletes anything (but the board's other views, when asked with `--views --yes`), never
 closes an item or a step, and never changes an open issue's Status. It reads GitHub with `gh`
 (signed in), 100 issues at a time, and writes in batches.
 
@@ -113,30 +113,27 @@ They're warnings: they never fail the check.
   how something works doesn't count, nor what a page says is finished: under a heading with
   "done", "shipped", "built" or "released" in it, after a paragraph that starts with one of
   those words, or in an item that says so ("done 14 Nov", "(fixed", struck through, ticked).
-- **The board opening on GitHub's starting view:** a view a new board comes with ("View 1",
-  "Backlog", "Team items", "My items": no filter, `no:parent-issue`, which shows nothing once every
-  item has a parent, or `assignee:@me`) as the first tab.
+- **A board that isn't the plan's three views:** views besides Inbox, Needs you and Roadmap
+  (GitHub's starting ones, "Backlog", "Team items", "My items", or older ones of the plan's), or
+  one of the three missing.
 
 ### The views
 
-`plan init` and `plan sync --views` make these, or put their filters right when they exist:
+Every board has three views, the same on every project, in this order (Kevin, 2026-11-15, #88):
 
 | View | Shows |
 |---|---|
-| **Now · Next · Later** | A board of the open items, a column per Horizon, in Order. |
-| **Roadmap** | A timeline of the open phases and items, grouped by milestone, in Order. |
-| **In order** | A table of the open items and steps, grouped by Horizon, in Order. |
-| **Now**, **Next**, **Later** | A table per Horizon of its open items and steps, in Order. |
-| **Inbox** | A table of the board's drafts, with their Kind: the owner's inbox (made when it's missing; an "Ideas" view from before is renamed; never otherwise changed). |
-| **Needs you** | A table of the open issues that [wait on the owner](#what-waits-on-the-owner), in Order (made by `sync` when it's missing; never otherwise changed). |
+| **Inbox** | A table of the board's drafts, with their Kind: what the owner adds by hand, until "scan the inbox" takes it into the plan. Made by `sync` when it's missing (an "Ideas" view from before is renamed); never otherwise changed. |
+| **Needs you** | A table of the open issues that [wait on the owner](#what-waits-on-the-owner), in Order. Made by `sync` when it's missing; never otherwise changed. |
+| **Roadmap** | The whole plan: a board of the open items, a column each for Now, Next and Later, in Order. Made by `plan init` and `plan sync --views`, or its filter put right. |
 
-A filter put right keeps the view's layout; the same words in another order are the same
-filter. With `--yes` they also delete GitHub's starting views (above), and only those: a view
-someone made or changed stays.
+Nothing else. `plan sync --views --yes` deletes every other view (GitHub's starting ones, and
+the plan's older Now · Next · Later, Now, Next, Later and In order tables), and makes a Roadmap
+that was a timeline again as a board; without `--yes` it only says what it would delete.
+`plan check` says when a board has others, or lacks one of the three.
 
-GitHub's API can't move a view, only make and delete one: the first tab is what a project opens
-on. Once the starting views are gone, drag **Now · Next · Later** to the left of the others, on
-the board's page, if it isn't first already.
+GitHub's API can't move a view, only make and delete one. The three are made in their order, so
+on a board whose other views are gone they read Inbox, Needs you, Roadmap.
 
 ### The index and the root issue
 
@@ -241,6 +238,16 @@ session:
 `--set Field=value` sets any field of the board; `--order` takes a decimal to slot one between
 two. The view was called Ideas before; `plan init` and `plan sync` rename it in place, keeping
 its layout and filter, and make the Kind field and show it there.
+
+### A request made in a session
+
+What the owner asks for in a session (in the terminal, not on GitHub) needs no Inbox entry
+(Kevin, 2026-11-15, #88): "you don't have to add it to inbox; you can adjust the plan
+accordingly." The session assesses it the same way as an Inbox entry (its kind, where it
+belongs, what it depends on, what should come first), opens its issue in the plan with
+`gh issue create` and a milestone (or as a sub-issue of its item), gives it its Order and Horizon
+(`docs-kit plan set`), moves others where it should come first, says it on its phase's page,
+runs `plan sync` and `plan check`, and says where it went.
 
 ## Changing the plan
 

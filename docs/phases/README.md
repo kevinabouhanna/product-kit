@@ -3,6 +3,12 @@
 
 Each phase is a milestone on GitHub and a page here; each plan is an issue, in the order of the project board.
 
+## Now
+
+| Order | Plan | Phase |
+|---|---|---|
+| 17.6 | #88 The board: three views, Inbox, Needs you and the Roadmap | [Phase 4: The plan at a glance](04-the-plan-at-a-glance.md) |
+
 ## Next
 
 | Order | Plan | Phase |
@@ -17,5 +23,4 @@ Each phase is a milestone on GitHub and a page here; each plan is an issue, in t
 
 ## Done
 
-[Phase 1: Out of NetworkMonitor](01-out-of-networkmonitor.md) ·
-[Phase 4: The plan at a glance](04-the-plan-at-a-glance.md)
+[Phase 1: Out of NetworkMonitor](01-out-of-networkmonitor.md)
