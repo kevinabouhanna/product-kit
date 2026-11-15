@@ -1,6 +1,6 @@
 # Phase 4: The plan at a glance
 
-**Milestone:** Phase 4: The plan at a glance · **Status:** Now
+**Milestone:** Phase 4: The plan at a glance · **Status:** Done
 
 **Goal:** every project's plan says at a glance what comes next and what waits on its owner, and
 `docs-kit plan` keeps it that way by itself, instead of a session putting it right by hand.
@@ -19,14 +19,12 @@ Then, after comparing a teammate's "software factory" for Claude Code (2026-11-1
 ticket there gets numbered acceptance criteria before any code, and its pull request names the
 test that proves each. Here, an item says **Done when** the same way.
 
-## What's left
-
-- **#93 The board's workflows, the same few everywhere** (Kevin: "take care of the github
-  workflows point"): five that keep an issue's Status right, on every board; Auto-close issue
-  (which closed phase 4 three times, #78) and Auto-add to project deleted.
-
 ## What shipped (15 Nov 2026)
 
+- **The board's workflows, the same five everywhere** (#93, tools 2.13.1; Kevin: "take care of
+  the github workflows point"): the five that keep an issue's Status right, on every board;
+  Auto-close issue (which closed phase 4 three times, #78) gone from all five, Auto-add to
+  project from the three that had it.
 - **Every item says when it's done** (#90, tools 2.13.0): numbered **Done when** points in
   every item's description, written the same way for a request made in a session; `plan check`
   lists an item in Now or Next that has none; the pull request takes each point with the test or
