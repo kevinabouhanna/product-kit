@@ -118,7 +118,10 @@ They're warnings: they never fail the check.
   one of the three missing.
 - **An item that doesn't say when it's done** (#90): an open item in Now or Next (the upkeep
   item aside) whose description has no **Done when**: a heading, a label or a line of its own
-  that starts with those words. "It's done when…" inside a sentence doesn't count.
+  that starts with those words (bold, quoted, ticked or with an emoji before them is fine), with
+  its points after it on that line or under it. "It's done when…" inside a sentence, one in a
+  code block, or a heading with nothing under it doesn't count. Items made before the rule are
+  listed too, once, until their description says it.
 
 ### When an item is done (#90)
 
