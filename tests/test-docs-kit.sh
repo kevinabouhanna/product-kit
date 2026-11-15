@@ -249,6 +249,7 @@ EOF
 python3 -I "$G/make.py" "$G/github.json"
 export DOCS_KIT_GH="python3 -I $(dirname "$KIT")/../tests/fake-github.py $G/github.json" DOCS_KIT_RETRY_WAIT=0 FAKE_PAGE=3
 gh_state() { python3 -I -c 'import json,sys; s=json.load(open(sys.argv[1])); print(eval(sys.argv[2], {"s": s, "i": s["issues"], "b": s["board"]}))' "$G/github.json" "$1"; }
+gh_true() { python3 -I -c 'import json,sys; s=json.load(open(sys.argv[1])); sys.exit(not eval(sys.argv[2], {"s": s, "i": s["issues"], "b": s["board"]}))' "$G/github.json" "$1"; }
 cd "$Q" || exit 1
 git init -q -b main . && git config user.email t@example.com && git config user.name t
 cat >.product-kit.json <<'EOF'
@@ -307,8 +308,10 @@ expect "the root's description: the plan's first paragraph, its links made whole
 expect "then the items by Horizon, each with its phase and phase issue" \
   'grep -qF "| 2 | #10 First plan | [Phase 1: One](https://github.com/someone/thing/blob/main/docs/phases/1-one.md) #$p1 |" <<<"$body" && grep -q "^## Now" <<<"$body"'
 expect "and the finished phases last" 'grep -A2 "^## Done" <<<"$body" | grep -qF "[Phase 0: Start]"'
-expect "the plan's views: made, or their filters put right" \
-  '[ "$(gh_state "sorted((v[\"name\"], v[\"filter\"]) for v in b[\"views\"])")" = "[('"'"'In order'"'"', '"'"'is:open level:Item,Step'"'"'), ('"'"'Inbox'"'"', '"'"'is:draft'"'"'), ('"'"'Issues'"'"', '"'"'no:parent-issue'"'"'), ('"'"'Now · Next · Later'"'"', '"'"'is:open level:Item'"'"'), ('"'"'Roadmap'"'"', '"'"'is:open level:Phase,Item'"'"')]" ] && [ "$(gh_state "len(b[\"views\"])")" = 5 ]'
+expect "the plan's views: made, or their filters put right, with a table per Horizon" \
+  'gh_true "sorted((v[\"name\"], v[\"filter\"]) for v in b[\"views\"]) == [(\"In order\", \"is:open level:Item,Step\"), (\"Inbox\", \"is:draft\"), (\"Issues\", \"no:parent-issue\"), (\"Later\", \"is:open horizon:Later level:Item,Step\"), (\"Next\", \"is:open horizon:Next level:Item,Step\"), (\"Now\", \"is:open horizon:Now level:Item,Step\"), (\"Now · Next · Later\", \"is:open level:Item\"), (\"Roadmap\", \"is:open level:Phase,Item\")]"'
+expect "GitHub's starting view stays without --yes, and init says --yes would delete it" \
+  'grep -qF "the board'"'"'s view \"Issues\" is one of GitHub'"'"'s starting views: \`--views --yes\` deletes it" <<<"$out"'
 expect "a view whose filter is put right keeps its layout" '[ "$(gh_state "[v[\"layout\"] for v in b[\"views\"] if v[\"name\"] == \"Roadmap\"][0]")" = "ROADMAP_LAYOUT" ]'
 kind="$(gh_state '[f["id"] for f in b["fields"] if f["name"] == "Kind"][0]')"
 expect "a Kind field: Bug, Feature, Idea, Research" \
@@ -316,7 +319,7 @@ expect "a Kind field: Bug, Feature, Idea, Research" \
 expect "the Ideas view renamed Inbox in place: still a table of the drafts, now showing the Kind" \
   '[ "$(gh_state "[(v[\"name\"], v[\"layout\"], v[\"filter\"], v[\"fields\"]) for v in b[\"views\"] if v[\"id\"] == \"V3\"]")" = "[('"'"'Inbox'"'"', '"'"'TABLE_LAYOUT'"'"', '"'"'is:draft'"'"', ['"'"'F1'"'"', '"'"'$kind'"'"'])]" ]'
 expect "the board view's columns are the Horizon, sorted by Order" \
-  '[ "$(gh_state "[(v[\"vertical_group_by\"], v[\"sort_by\"]) for v in b[\"views\"] if v[\"name\"].startswith(\"Now\")]")" = "[([4], [[3, '"'"'asc'"'"']])]" ]'
+  '[ "$(gh_state "[(v[\"vertical_group_by\"], v[\"sort_by\"]) for v in b[\"views\"] if v[\"name\"] == \"Now · Next · Later\"]")" = "[([4], [[3, '"'"'asc'"'"']])]" ]'
 index="$(cat docs/phases/README.md)"
 expect "the index is written too, keeping its head" \
   'grep -q "^<!-- Written by .docs-kit plan index" <<<"$index" && grep -q "^What the phases are" <<<"$index" && ! grep -q Stale <<<"$index"'
@@ -453,6 +456,126 @@ expect "--config reads a config from elsewhere, before -C moves" \
 mv "$TMP/elsewhere.json" .product-kit.json
 echo '{"repo": "someone/thing"}' >"$TMP/no-plan.json"
 expect "a config with no plan says so" '{ "$KIT" --config "$TMP/no-plan.json" plan check 2>&1 || true; } | grep -q "no \"plan\" section"'
+
+echo "--- plan: what to look at (#73)"
+# NetworkMonitor's plan before #644: pages and GitHub agree, and still it doesn't say what's next.
+W="$TMP/roadmap"
+G="$TMP/gh-roadmap"
+mkdir -p "$W/docs/phases" "$G"
+cat >"$G/make.py" <<'EOF'
+import json, sys
+def issue(n, title, state="OPEN", milestone=None, parent=None, labels=()):
+    return {"id": f"I{n}", "number": n, "title": title, "state": state, "milestone": milestone, "parent": parent,
+            "labels": list(labels), "body": ""}
+def opts(*names):
+    return [{"id": f"o-{n}", "name": n} for n in names]
+P1, P2, P3 = "Phase 1: Lights", "Phase 2: Ad blocking that holds up", "Phase 3: Later things"
+issues = [
+    issue(1, "The plan: Thing", labels=["plan"]),
+    issue(2, P1, milestone=P1, parent=1, labels=["phase"]),
+    issue(3, P2, milestone=P2, parent=1, labels=["phase"]),
+    issue(4, P3, milestone=P3, parent=1, labels=["phase"]),
+    issue(10, "Keep the tooling in order", milestone=P1, parent=2),
+    issue(11, "Ad blocking that holds up", milestone=P2, parent=3),
+    issue(12, "Block lists", state="CLOSED", milestone=P2, parent=11),
+    issue(13, "Pause", state="CLOSED", milestone=P2, parent=11),
+    issue(14, "Enhanced ad blocking", milestone=P2, parent=11),
+    issue(15, "Later: Lights", milestone=P1, parent=2),
+    issue(16, "A closed bug", state="CLOSED", milestone=P1, parent=2),
+    issue(17, "Far away", milestone=P3, parent=4),
+    issue(18, "Shipped and said so", state="CLOSED", milestone=P1, parent=2),
+    issue(19, "Another shipped", state="CLOSED", milestone=P1, parent=2),
+]
+def item(n, **values):
+    return str(n), {"id": f"PVTI_{n}", "values": values}
+state = {
+    "repo": "someone/thing", "repo_id": "R1", "next": 1000,
+    "milestones": [{"id": f"M{k}", "number": k, "title": t, "state": "OPEN", "dueOn": None}
+                   for k, t in enumerate((P1, P2, P3), 1)],
+    "labels": [{"id": "L1", "name": "plan"}, {"id": "L2", "name": "phase"}],
+    "issues": {str(i["number"]): i for i in issues},
+    "board": {
+        "id": "P1", "title": "Board", "owner": "Someone", "number": 8, "type": "User",
+        "fields": [
+            {"id": "F1", "databaseId": 1, "name": "Title", "dataType": "TITLE"},
+            {"id": "F2", "databaseId": 2, "name": "Status", "dataType": "SINGLE_SELECT", "options": opts("Todo", "Done")},
+            {"id": "F3", "databaseId": 3, "name": "Order", "dataType": "NUMBER"},
+            {"id": "F4", "databaseId": 4, "name": "Horizon", "dataType": "SINGLE_SELECT", "options": opts("Now", "Next", "Later")},
+            {"id": "F5", "databaseId": 5, "name": "Milestone", "dataType": "MILESTONE"},
+            {"id": "F6", "databaseId": 6, "name": "Level", "dataType": "SINGLE_SELECT", "options": opts("Plan", "Phase", "Item", "Step")},
+            {"id": "F7", "databaseId": 7, "name": "Kind", "dataType": "SINGLE_SELECT", "options": opts("Bug", "Feature", "Idea", "Research")},
+        ],
+        "items": dict([item(10, Order=1, Horizon="Now"), item(11, Order=2, Horizon="Next"),
+                       item(14, Order=2, Horizon="Next"), item(15, Order=3, Horizon="Next"),
+                       item(17, Order=9, Horizon="Later")]),
+        "views": [{"id": "V1", "number": 1, "name": "View 1", "filter": None, "layout": "TABLE_LAYOUT"},
+                  {"id": "V2", "number": 2, "name": "Now · Next · Later", "filter": "is:open level:Item", "layout": "BOARD_LAYOUT"},
+                  {"id": "V3", "number": 3, "name": "Inbox", "filter": "is:draft", "layout": "TABLE_LAYOUT", "fields": ["F1", "F7"]},
+                  {"id": "V4", "number": 4, "name": "My items", "filter": "assignee:@me", "layout": "TABLE_LAYOUT"}],
+        "drafts": {},
+    },
+}
+json.dump(state, open(sys.argv[1], "w"), indent=1)
+EOF
+python3 -I "$G/make.py" "$G/github.json"
+export DOCS_KIT_GH="python3 -I $(dirname "$KIT")/../tests/fake-github.py $G/github.json"
+cd "$W" || exit 1
+git init -q -b main . && git config user.email t@example.com && git config user.name t
+printf '{"repo": "someone/thing", "name": "Thing", "upkeep": 10,\n "plan": {"project": {"owner": "someone", "number": 8}}}\n' >.product-kit.json
+printf '# The plan\n\nThing does one thing well.\n' >docs/PLAN.md
+printf '# The phases\n' >docs/phases/README.md
+cat >docs/phases/1-lights.md <<'EOF'
+# Phase 1: Lights
+
+**Milestone:** Phase 1: Lights · **Status:** Now
+
+## The plans
+
+- **A closed bug** (#16, a bug Kevin met): it hid the switch.
+- **Keep the tooling in order** (#10).
+- #15, the lights again.
+- After it, see NetworkMonitor#16 and [the list](https://github.com/someone/thing/issues/16).
+
+Done (13 Nov 2026, not released yet):
+
+- **Shipped and said so** (#18).
+
+## What shipped
+
+- #19 Another shipped.
+EOF
+printf '# Phase 2: Ad blocking\n\n**Milestone:** Phase 2: Ad blocking that holds up · **Status:** Next\n\n- #11, what is left of it.\n' >docs/phases/2-ads.md
+printf '# Phase 3: Later things\n\n**Milestone:** Phase 3: Later things · **Status:** Later\n\n| Order | Plan |\n|---|---|\n| 9 | #17 Far away |\n' >docs/phases/3-later.md
+"$KIT" plan sync >/dev/null
+git add -A && git commit -qm plan
+out="$("$KIT" plan check 2>&1)"; status=$?
+expect "the pages and GitHub agree, so check passes, and says what to look at" \
+  '[ $status -eq 0 ] && grep -q "agree" <<<"$out" && grep -qF "5 things to look at, so the plan says what'"'"'s next (never a failure):" <<<"$out"'
+[ $status -eq 0 ] || echo "$out"
+expect "Now holds only the upkeep item: it names the next piece of work" \
+  'grep -qF "Now holds only the upkeep item, #10, so the plan doesn'"'"'t say what'"'"'s next: move the next piece of work up (#11 Ad blocking that holds up, say: \`docs-kit plan set 11 Horizon=Now\`)" <<<"$out"'
+expect "an umbrella: all its steps done but one" \
+  'grep -qF "#11 Ad blocking that holds up is an umbrella: 2 of its 3 steps are done, so the board shows it instead of the work left, #14 Enhanced ad blocking" <<<"$out"'
+expect "an item that repeats its phase's title" 'grep -qF "#15 Later: Lights repeats its phase'"'"'s title (\"Phase 1: Lights\")" <<<"$out"'
+expect "a page that lists a closed issue with what's still to do" \
+  'grep -qF "docs/phases/1-lights.md: lists #16 A closed bug with what'"'"'s still to do, and it'"'"'s closed" <<<"$out"'
+expect "but not under Done, What shipped, or another repository's #16" '! grep -qE "#1[89] |lists #16.*lists #16" <<<"$out"'
+expect "the board opening on GitHub's starting view" \
+  'grep -qF "the board opens on GitHub'"'"'s starting view \"View 1\", not the plan'"'"'s" <<<"$out" && grep -qF "(\"View 1\", \"My items\")" <<<"$out"'
+expect "plan status says them too" '"$KIT" plan status | grep -q "5 things to look at"'
+out="$("$KIT" plan sync --views 2>&1)"
+expect "sync --views makes the plan's tables, and only says it would delete GitHub's" \
+  'gh_true "[v[\"name\"] for v in b[\"views\"]] == [\"View 1\", \"Now · Next · Later\", \"Inbox\", \"My items\", \"Roadmap\", \"In order\", \"Now\", \"Next\", \"Later\"]" && grep -qF "\"View 1\" is one of GitHub'"'"'s starting views: \`--views --yes\` deletes it" <<<"$out"'
+"$KIT" plan sync --views --yes >/dev/null
+expect "with --yes, GitHub's starting views go, and nothing else" \
+  'gh_true "[v[\"name\"] for v in b[\"views\"]] == [\"Now · Next · Later\", \"Inbox\", \"Roadmap\", \"In order\", \"Now\", \"Next\", \"Later\"]"'
+gh_set 'i["11"]["state"] = "CLOSED"; i["14"]["parent"] = 3; i["15"]["title"] = "Brighter bulbs"; b["items"]["14"]["values"]["Horizon"] = "Now"'
+sed -i '' -e '/A closed bug/d' docs/phases/1-lights.md
+printf '# Phase 2: Ad blocking\n\n**Milestone:** Phase 2: Ad blocking that holds up · **Status:** Now\n\n- #14, Enhanced ad blocking.\n' >docs/phases/2-ads.md
+"$KIT" plan sync >/dev/null
+out="$("$KIT" plan check 2>&1)"; status=$?
+expect "once each is put right, nothing to look at" '[ $status -eq 0 ] && ! grep -q "to look at" <<<"$out"'
+[ $status -eq 0 ] && ! grep -q "to look at" <<<"$out" || echo "$out"
 cd "$P" || exit 1
 
 echo "--- the rest"

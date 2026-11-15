@@ -161,6 +161,9 @@ def issue_node(i: dict, query: str) -> dict:
             "milestone": next(({"number": m["number"], "title": m["title"]} for m in S["milestones"]
                                if m["title"] == i.get("milestone")), None),
             "parent": {"number": parent["number"], "state": parent["state"]} if parent else None,
+            "subIssuesSummary": {"total": sum(1 for x in S["issues"].values() if x.get("parent") == i["number"]),
+                                 "completed": sum(1 for x in S["issues"].values()
+                                                  if x.get("parent") == i["number"] and x["state"] == "CLOSED")},
             "labels": {"nodes": [{"name": n} for n in i.get("labels", [])]},
             "projectItems": {"nodes": [project_item] if project_item else []}}
 
@@ -291,6 +294,9 @@ def mutate(query: str) -> dict:
                 view["fields"] = list(v["configuration"]["visibleFieldIds"])
             # As GitHub seems to: a change without the layout can put a view back to a board.
             view["layout"] = v.get("layout", "BOARD_LAYOUT")
+            out[alias] = {"clientMutationId": None}
+        elif name == "deleteProjectV2View":
+            B["views"] = [x for x in B["views"] if x["id"] != v["viewId"]]
             out[alias] = {"clientMutationId": None}
         elif name == "addBlockedBy":
             by_id(v["issueId"]).setdefault("blocked_by", []).append(by_id(v["blockingIssueId"])["number"])

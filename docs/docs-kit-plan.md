@@ -46,9 +46,10 @@ or not.
 
 | Command | Does |
 |---|---|
-| `docs-kit plan init [--dry-run]` | Sets a new project up, and is safe to run again: the board's fields (Level, Order, Horizon, and Start and Target when named), a milestone for each page and each page's Milestone line, the labels, the root issue, a phase issue per phase, and three views; then `sync`. |
+| `docs-kit plan init [--dry-run]` | Sets a new project up, and is safe to run again: the board's fields (Level, Order, Horizon, and Start and Target when named), a milestone for each page and each page's Milestone line, the labels, the root issue, a phase issue per phase, and the plan's views; then `sync`. |
 | `docs-kit plan sync [--dry-run]` | Makes GitHub follow the tree, and the generated files follow GitHub: see below. Prints every change in plain words; `--dry-run` only prints them. |
-| `docs-kit plan check` | Fails when anything `sync` would change, or anything it can't (below). One line when all is well (and one more when entries are waiting in the Inbox, which never fails it). For CI. |
+| `docs-kit plan sync --views [--yes]` | The same, and the board's views made or put right ([the views](#the-views)); with `--yes`, GitHub's starting views are deleted. |
+| `docs-kit plan check` | Fails when anything `sync` would change, or anything it can't (below). One line when all is well (and one more when entries are waiting in the Inbox, which never fails it), then [what to look at](#what-to-look-at), which never fails it either. For CI. |
 | `docs-kit plan inbox [--json]` | What's waiting in the board's Inbox, oldest first: title, Kind (or "kind not set"), note, when and by whom, item id. `plan ideas` is the same. [The Inbox](#the-inbox). |
 | `docs-kit plan inbox --take <item> --phase "<milestone>" …` | Takes one entry into the plan as an issue, with its spec. [The Inbox](#the-inbox). |
 | `docs-kit plan set <issue> [Field=value …] [--blocked-by N …]` | Moves an issue in the plan (its Order, say) or records what it waits for, then syncs. |
@@ -69,8 +70,8 @@ or not.
 7. Writes the root issue's and the phase issues' descriptions, the pages' Status lines and the
    index.
 
-It never deletes anything, never closes an item or a step, and never changes an open issue's
-Status. It reads GitHub with `gh` (signed in), 100 issues at a time, and writes in batches.
+It never deletes anything (but GitHub's starting views, when asked with `--views --yes`), never
+closes an item or a step, and never changes an open issue's Status. It reads GitHub with `gh` (signed in), 100 issues at a time, and writes in batches.
 
 ### What only you can put right
 
@@ -88,21 +89,47 @@ Status. It reads GitHub with `gh` (signed in), 100 issues at a time, and writes 
 - a field the config names that the board hasn't, or of the wrong kind (`init` adds the plan's
   own).
 
+### What to look at
+
+A plan whose pages and GitHub agree can still not say what comes next: NetworkMonitor's passed
+`plan check` the day Kevin found it "organized in a very bad way" (NetworkMonitor#644). So
+`plan check`, `plan sync` and `plan status` also list these, one line each with what to do.
+They're warnings: they never fail the check.
+
+- **Nothing real in Now:** Now is empty, or holds only the upkeep item (`upkeep` in the config),
+  while Next or Later have items. A phase finished and nothing moved up. It names the next item
+  and the `docs-kit plan set` that moves it.
+- **An umbrella in Now or Next:** an item whose steps are all done but one (the board shows the
+  umbrella, not the work left: make that step an item and close the umbrella), or whose title
+  repeats its phase's ("Ad blocking that holds up" under "Phase 2: Ad blocking that holds up").
+- **A closed issue listed with what's still to do:** a phase page (one not Done) whose list item
+  or table row names a closed issue of its phase first. What a page says is finished doesn't
+  count: under a heading with "done", "shipped", "built" or "released" in it, after a paragraph
+  that starts with one of those words, or in an item that says so ("done 14 Nov", "(fixed",
+  struck through, ticked).
+- **The board opening on GitHub's starting view:** a view a new board comes with ("View 1",
+  "Backlog", "Team items", "My items": no filter, `no:parent-issue`, which shows nothing once every
+  item has a parent, or `assignee:@me`) as the first tab.
+
 ### The views
 
-`plan init` makes these, or puts their filters right when they exist:
+`plan init` and `plan sync --views` make these, or put their filters right when they exist:
 
 | View | Shows |
 |---|---|
 | **Now · Next · Later** | A board of the open items, a column per Horizon, in Order. |
 | **Roadmap** | A timeline of the open phases and items, grouped by milestone, in Order. |
 | **In order** | A table of the open items and steps, grouped by Horizon, in Order. |
+| **Now**, **Next**, **Later** | A table per Horizon of its open items and steps, in Order. |
 | **Inbox** | A table of the board's drafts, with their Kind: the owner's inbox (made when it's missing; an "Ideas" view from before is renamed; never otherwise changed). |
 
-A filter put right keeps the view's layout.
+A filter put right keeps the view's layout; the same words in another order are the same
+filter. With `--yes` they also delete GitHub's starting views (above), and only those: a view
+someone made or changed stays.
 
-GitHub's API can't move a view: the first tab is what a project opens on. Drag **Now · Next ·
-Later** to the left of the others once, on the board's page.
+GitHub's API can't move a view, only make and delete one: the first tab is what a project opens
+on. Once the starting views are gone, drag **Now · Next · Later** to the left of the others, on
+the board's page, if it isn't first already.
 
 ### The index and the root issue
 
