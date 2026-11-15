@@ -116,6 +116,31 @@ They're warnings: they never fail the check.
 - **A board that isn't the plan's three views:** views besides Inbox, Needs you and Roadmap
   (GitHub's starting ones, "Backlog", "Team items", "My items", or older ones of the plan's), or
   one of the three missing.
+- **An item that doesn't say when it's done** (#90): an open item in Now or Next (the upkeep
+  item aside) whose description has no **Done when**: a heading, a label or a line of its own
+  that starts with those words (bold, quoted, ticked or with an emoji before them is fine), with
+  its points after it on that line or under it. "It's done when…" inside a sentence, one in a
+  code block, or a heading with nothing under it doesn't count. Items made before the rule are
+  listed too, once, until their description says it.
+
+### When an item is done (#90)
+
+Every item says **Done when**, as numbered points, before anyone builds it (Kevin, 2026-11-15,
+after comparing a teammate's "software factory" for Claude Code). Each point is something a test
+or a check can show from outside: what someone sees or can do, what a command prints. "The code
+is clean" isn't one. A point that needs the owner (their phone, their accounts) says so, and the
+item gets [`needs-you`](#what-waits-on-the-owner) for it.
+
+```
+**Done when:**
+1. The list shows each request's votes, and a click on ▲ adds one.
+2. "Most votes" sorts the list; newest first stays the default.
+3. A vote survives a reload.
+```
+
+The pull request that closes the item takes each point with the test or check that proves it,
+or says why none can (`3. A vote survives a reload: tests/votes.test.ts "keeps a vote after a
+reload"`). A point no test covers is either given one or said plainly, so the gap is seen.
 
 ### The views
 
@@ -206,9 +231,9 @@ session:
 2. handles each by its kind:
    - **Bug:** reads the app's logs first, quotes the lines that explain it in the issue, and
      places it by severity: a bug that breaks daily use goes ahead of features (Now, early in
-     the Order);
+     the Order); its **Done when** says what shows it's fixed;
    - **Feature:** a spec, in plain words: **Why** (the owner's words quoted), **What**, **Done
-     when**;
+     when** ([numbered points](#when-an-item-is-done-90));
    - **Idea** or **Research:** a research or decision issue, not a build: what to find out, and
      how the decision will be made;
 3. fits every entry into the plan in the most logical order:
@@ -244,7 +269,8 @@ its layout and filter, and make the Kind field and show it there.
 What the owner asks for in a session (in the terminal, not on GitHub) needs no Inbox entry
 (Kevin, 2026-11-15, #88): "you don't have to add it to inbox; you can adjust the plan
 accordingly." The session assesses it the same way as an Inbox entry (its kind, where it
-belongs, what it depends on, what should come first), opens its issue in the plan with
+belongs, what it depends on, what should come first), writes it the same spec (**Why**,
+**What**, **Done when**, #90), opens its issue in the plan with
 `gh issue create` and a milestone (or as a sub-issue of its item), gives it its Order and Horizon
 (`docs-kit plan set`), moves others where it should come first, says it on its phase's page,
 runs `plan sync` and `plan check`, and says where it went.

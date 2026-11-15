@@ -478,11 +478,11 @@ issues = [
     issue(3, P2, milestone=P2, parent=1, labels=["phase"]),
     issue(4, P3, milestone=P3, parent=1, labels=["phase"]),
     issue(10, "Keep the tooling in order", milestone=P1, parent=2),
-    issue(11, "Ad blocking that holds up", milestone=P2, parent=3),
+    issue(11, "Ad blocking that holds up", milestone=P2, parent=3) | {"body": "An example:\n\n```\n**Done when:**\n1. It works.\n```\n\n## Done when\n"},
     issue(12, "Block lists", state="CLOSED", milestone=P2, parent=11),
     issue(13, "Pause", state="CLOSED", milestone=P2, parent=11),
     issue(14, "Enhanced ad blocking", milestone=P2, parent=11),
-    issue(15, "Later: Lights", milestone=P1, parent=2),
+    issue(15, "Later: Lights", milestone=P1, parent=2) | {"body": "It's done when the bulbs are brighter."},
     issue(16, "A closed bug", state="CLOSED", milestone=P1, parent=2),
     issue(17, "Far away", milestone=P3, parent=4),
     issue(18, "Shipped and said so", state="CLOSED", milestone=P1, parent=2),
@@ -560,7 +560,7 @@ printf '# Phase 3: Later things\n\n**Milestone:** Phase 3: Later things · **Sta
 git add -A && git commit -qm plan
 out="$("$KIT" plan check 2>&1)"; status=$?
 expect "the pages and GitHub agree, so check passes, and says what to look at" \
-  '[ $status -eq 0 ] && grep -q "agree" <<<"$out" && grep -qF "5 things to look at, so the plan says what'"'"'s next (never a failure):" <<<"$out"'
+  '[ $status -eq 0 ] && grep -q "agree" <<<"$out" && grep -qF "7 things to look at, so the plan says what'"'"'s next (never a failure):" <<<"$out"'
 [ $status -eq 0 ] || echo "$out"
 expect "Now holds only the upkeep item: it names the next piece of work" \
   'grep -qF "Now holds only the upkeep item, #10, so the plan doesn'"'"'t say what'"'"'s next: move the next piece of work up (#11 Ad blocking that holds up, say: \`docs-kit plan set 11 Horizon=Now\`)" <<<"$out"'
@@ -572,14 +572,19 @@ expect "a page that lists a closed issue with what's still to do" \
 expect "but not under Done, What shipped, a section that only describes, or another repository's #16" '! grep -q "#1[89]" <<<"$out"'
 expect "a board with views besides the plan's three, and no Roadmap (#88)" \
   'grep -qF "the board has views besides Inbox, Needs you and Roadmap (\"View 1\", \"Now · Next · Later\", \"My items\") and no \"Roadmap\": \`docs-kit plan sync --views --yes\` leaves it with just those three" <<<"$out"'
-expect "plan status says them too" '"$KIT" plan status | grep -q "5 things to look at"'
+expect "an item in Now or Next that doesn't say when it's done (#90)" \
+  'grep -qF "#11 Ad blocking that holds up doesn'"'"'t say when it'"'"'s done: add a numbered \"**Done when:**\" list to its description" <<<"$out"'
+expect "a \"done when\" inside a sentence, in a code block, or with nothing under it isn't one" \
+  'grep -qF "#15 Later: Lights doesn'"'"'t say when" <<<"$out" && grep -qF "#11 Ad blocking that holds up doesn'"'"'t say when" <<<"$out"'
+expect "but not the upkeep item, a step, or Later" '! grep -qE "#(10|14|17) .*doesn.t say when" <<<"$out"'
+expect "plan status says them too" '"$KIT" plan status | grep -q "7 things to look at"'
 out="$("$KIT" plan sync --views 2>&1)"
 expect "sync --views makes the Roadmap, and only says it would delete the others" \
   'gh_true "[v[\"name\"] for v in b[\"views\"]] == [\"View 1\", \"Now · Next · Later\", \"Inbox\", \"My items\", \"Needs you\", \"Roadmap\"]" && grep -qF "\"View 1\" isn'"'"'t one of the plan'"'"'s three: \`--views --yes\` deletes it" <<<"$out"'
 "$KIT" plan sync --views --yes >/dev/null
 expect "with --yes, only Inbox, Needs you and Roadmap are left" \
   'gh_true "[v[\"name\"] for v in b[\"views\"]] == [\"Inbox\", \"Needs you\", \"Roadmap\"]"'
-gh_set 'i["11"]["state"] = "CLOSED"; i["14"]["parent"] = 3; i["15"]["title"] = "Brighter bulbs"; b["items"]["14"]["values"]["Horizon"] = "Now"'
+gh_set 'i["11"]["state"] = "CLOSED"; i["14"]["parent"] = 3; i["15"]["title"] = "Brighter bulbs"; b["items"]["14"]["values"]["Horizon"] = "Now"; i["14"]["body"] = "## Why\n\nAds.\n\n> ### ✅ **Done** when\n>\n> - [ ] A page with ads shows none."; i["15"]["body"] = "**Why:** brighter.\r\n\r\n**Done when:**\r\n1. The bulbs are brighter."'
 sed -i '' -e '/A closed bug/d' docs/phases/1-lights.md
 printf '# Phase 2: Ad blocking\n\n**Milestone:** Phase 2: Ad blocking that holds up · **Status:** Now\n\n- #14, Enhanced ad blocking.\n' >docs/phases/2-ads.md
 "$KIT" plan sync >/dev/null

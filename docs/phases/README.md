@@ -7,7 +7,7 @@ Each phase is a milestone on GitHub and a page here; each plan is an issue, in t
 
 | Order | Plan | Phase |
 |---|---|---|
-| 17.6 | #88 The board: three views, Inbox, Needs you and the Roadmap | [Phase 4: The plan at a glance](04-the-plan-at-a-glance.md) |
+| 17.7 | #90 Every item says when it's done, and its pull request shows the proof | [Phase 4: The plan at a glance](04-the-plan-at-a-glance.md) |
 
 ## Next
 

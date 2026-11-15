@@ -20,8 +20,8 @@ the interface changed) → videos → publish (README, wiki, website) → native
 | When | Run | And |
 |---|---|---|
 | A new project | `product-kit init --name … --pitch "…" --languages … --site …`; then write the plan's pages with the owner and `docs-kit plan init` | `product-kit doctor` |
-| The plan changes (a new issue, a new order, a phase done) | `docs-kit plan sync`, then `docs-kit plan check`, which must pass | Mention each new item (`#N`) on its phase's page; a new item is a sub-issue of its phase issue. Put right what it lists "to look at" (Now empty, an umbrella, a closed issue listed as open, a board with views besides Inbox, Needs you and Roadmap: `plan sync --views --yes`), or say why not |
-| The owner asks for something in the session | No Inbox entry: assess it as [Scan the inbox](../../docs/docs-kit-plan.md#a-request-made-in-a-session) does, open its issue in the plan where it belongs, move what it should come before | Then do it, unless something it depends on comes first: then say what, and where it went |
+| The plan changes (a new issue, a new order, a phase done) | `docs-kit plan sync`, then `docs-kit plan check`, which must pass | Mention each new item (`#N`) on its phase's page; a new item is a sub-issue of its phase issue. Put right what it lists "to look at" (Now empty, an umbrella, a closed issue listed as open, a board with views besides Inbox, Needs you and Roadmap: `plan sync --views --yes`, an item with no **Done when**), or say why not |
+| The owner asks for something in the session | No Inbox entry: assess it as [Scan the inbox](../../docs/docs-kit-plan.md#a-request-made-in-a-session) does, open its issue in the plan where it belongs, with **Why**, **What** and numbered **Done when** points ([when an item is done](../../docs/docs-kit-plan.md#when-an-item-is-done-90)), move what it should come before | Then do it, unless something it depends on comes first: then say what, and where it went |
 | Something only the owner can do or check (their phone, accounts, a purchase, a choice) | Do every check you can first; then the `needs-you` label and a short "**Kevin:**" section (the owner's name) saying what to do, then `docs-kit plan sync` | It waits in Later and never blocks the rest; when it's done, take the label off and sync puts it back ([what waits on the owner](../../docs/docs-kit-plan.md#what-waits-on-the-owner)) |
 | The owner says "scan the inbox" | `docs-kit plan inbox` | Follow [Scan the inbox](../../docs/docs-kit-plan.md#scan-the-inbox); never take an entry in unasked |
 | The app's text changes | `lang-kit todo`: translate only the packet, then `lang-kit apply <file>` | `docs-kit todo` names the paragraphs to change, and their copies |
@@ -30,7 +30,7 @@ the interface changed) → videos → publish (README, wiki, website) → native
 | A window a picture shows changes | After the release is installed: `shots-kit check`, then `shots-kit update` | `shots-kit alt <names> --since <ref>`: rewrite each alt text from the packet |
 | A new image, GIF or video | List it: `shots-kit coverage` until it passes | It names the windows it shows, or why none |
 | The website changed | `product-kit site check` | Every page, every language, a phone's width and a computer's |
-| Before a pull request | `product-kit status` | Do each `✗`; the `·` lines are to look at |
+| Before a pull request | `product-kit status` | Do each `✗`; the `·` lines are to look at. Its description takes each of the item's **Done when** points with the test or check that proves it, or says why none can |
 | A release | `product-kit status --release`: the review, the site's docs, the pictures | Then `shots-kit videos`: scripted videos are remade; hand-made ones only when asked |
 | A version, a requirement, the pitch or a feature list changes | Change `facts` in the config, then `product-kit facts --write` | Never edit a marked spot by hand |
 | A new language | `lang-kit add <code> [name]` | Follow the order it prints |
