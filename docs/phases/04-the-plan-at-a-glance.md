@@ -1,6 +1,6 @@
 # Phase 4: The plan at a glance
 
-**Milestone:** Phase 4: The plan at a glance · **Status:** Now
+**Milestone:** Phase 4: The plan at a glance · **Status:** Done
 
 **Goal:** every project's plan says at a glance what comes next and what waits on its owner, and
 `docs-kit plan` keeps it that way by itself, instead of a session putting it right by hand.
@@ -11,13 +11,10 @@ check gets the `needs-you` label and waits in Later, so it never blocks the work
 
 Both came from the Inbox (scanned 2026-11-15).
 
-## What's left
-
-- **#83 A "Kevin:" step in a list says what to do:** home-control#359 and #280 say it as a step
-  of a numbered list, which `plan check` didn't count.
-
 ## What shipped (15 Nov 2026)
 
+- **A "Kevin:" step in a list says what to do** (#83, tools 2.11.2): home-control#359 and #280
+  say it as a step of a numbered list, which `plan check` now counts.
 - **Found rolling it out** (#80, tools 2.11.1): the closed-issue warning counts only lists of
   what's left (a section describing how something works isn't one), and `product-kit vendor`
   names its issue on the phase's page when the project's upkeep item is closed.
