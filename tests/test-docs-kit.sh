@@ -478,6 +478,105 @@ mv "$TMP/elsewhere.json" .product-kit.json
 echo '{"repo": "someone/thing"}' >"$TMP/no-plan.json"
 expect "a config with no plan says so" '{ "$KIT" --config "$TMP/no-plan.json" plan check 2>&1 || true; } | grep -q "no \"plan\" section"'
 
+echo "--- plan: in a pull request's CI (#101)"
+# Another session opens an item while this branch's pull request waits: its CI warns, and only a
+# pull request that changes the plan, a check by hand, or one on main still fails on it.
+R="$TMP/pr"
+G="$TMP/gh-pr"
+mkdir -p "$R/docs/phases" "$R/src" "$G"
+cat >"$G/make.py" <<'EOF'
+import json, sys
+def issue(n, title, state="OPEN", milestone=None, parent=None, labels=()):
+    return {"id": f"I{n}", "number": n, "title": title, "state": state, "milestone": milestone, "parent": parent,
+            "labels": list(labels), "body": "**Done when:**\n1. It works."}
+def opts(*names):
+    return [{"id": f"o-{n}", "name": n} for n in names]
+P1 = "Phase 1: One"
+issues = [issue(1, "The plan: Thing", labels=["plan"]), issue(2, P1, milestone=P1, parent=1, labels=["phase"]),
+          issue(10, "First", milestone=P1, parent=2), issue(11, "Second", milestone=P1, parent=2)]
+state = {
+    "repo": "someone/thing", "repo_id": "R1", "next": 1000,
+    "milestones": [{"id": "M1", "number": 1, "title": P1, "state": "OPEN", "dueOn": None}],
+    "labels": [{"id": "L1", "name": "plan"}, {"id": "L2", "name": "phase"}],
+    "issues": {str(i["number"]): i for i in issues},
+    "board": {
+        "id": "P1", "title": "Board", "owner": "Someone", "number": 8, "type": "User",
+        "fields": [
+            {"id": "F1", "databaseId": 1, "name": "Title", "dataType": "TITLE"},
+            {"id": "F2", "databaseId": 2, "name": "Status", "dataType": "SINGLE_SELECT", "options": opts("Todo", "Done")},
+            {"id": "F3", "databaseId": 3, "name": "Order", "dataType": "NUMBER"},
+            {"id": "F4", "databaseId": 4, "name": "Horizon", "dataType": "SINGLE_SELECT", "options": opts("Now", "Next", "Later")},
+            {"id": "F6", "databaseId": 6, "name": "Level", "dataType": "SINGLE_SELECT", "options": opts("Plan", "Phase", "Item", "Step")},
+            {"id": "F7", "databaseId": 7, "name": "Kind", "dataType": "SINGLE_SELECT", "options": opts("Bug", "Feature", "Idea", "Research")},
+        ],
+        "items": {"10": {"id": "PVTI_10", "values": {"Order": 1, "Horizon": "Now", "Status": "Todo"}},
+                  "11": {"id": "PVTI_11", "values": {"Order": 2, "Horizon": "Next", "Status": "Todo"}}},
+        "views": [], "workflows": [], "drafts": {},
+    },
+}
+json.dump(state, open(sys.argv[1], "w"), indent=1)
+EOF
+python3 -I "$G/make.py" "$G/github.json"
+export DOCS_KIT_GH="python3 -I $(dirname "$KIT")/../tests/fake-github.py $G/github.json"
+cd "$R" || exit 1
+git init -q -b main . && git config user.email t@example.com && git config user.name t
+at() { GIT_AUTHOR_DATE="$1" GIT_COMMITTER_DATE="$1" git "${@:2}"; }
+printf '{"repo": "someone/thing", "name": "Thing",\n "plan": {"project": {"owner": "someone", "number": 8}}}\n' >.product-kit.json
+printf '# The plan\n\nThing does one thing well.\n' >docs/PLAN.md
+printf '# Phase 1: One\n\n**Milestone:** Phase 1: One · **Status:** Now\n\n#10, then #11.\n' >docs/phases/1-one.md
+"$KIT" plan sync --views --yes >/dev/null
+"$KIT" plan sync >/dev/null  # the plan's description lists the Levels the first sync set
+out="$("$KIT" plan check 2>&1)"; status=$?
+expect "a plan that agrees, to start from" '[ $status -eq 0 ]'
+[ $status -eq 0 ] || echo "$out"
+git add -A && at 2026-11-15T09:00:00Z commit -qm plan
+git checkout -q -b code
+printf 'code\n' >src/app.txt
+git add -A && at 2026-11-15T09:30:00Z commit -qm code
+# 09:45: another session opens #20 in phase one: no page mentions it, it has no Horizon, isn't
+# under its phase nor on the board, and the index doesn't list it. At 09:50 it closes #11.
+gh_set 'i["20"] = {"id": "I20", "number": 20, "title": "A new item", "state": "OPEN", "milestone": "Phase 1: One", "parent": None, "labels": [], "body": "", "createdAt": "2026-11-15T09:45:00Z"}; i["11"]["state"] = "CLOSED"; i["11"]["closedAt"] = "2026-11-15T09:50:00Z"'
+out="$("$KIT" plan check 2>&1)"; status=$?
+expect "by hand, check fails on it as before" \
+  '[ $status -ne 0 ] && grep -qF "doesn'"'"'t mention #20 A new item" <<<"$out" && grep -qF "#20 A new item (an item in \"Phase 1: One\") has no Horizon" <<<"$out"'
+out="$("$KIT" plan check --pr 2>&1)"; status=$?
+expect "a pull request that changes no plan page passes while another session's item isn't on a page yet" '[ $status -eq 0 ]'
+[ $status -eq 0 ] || echo "$out"
+expect "and warns, naming the item and when it was made" \
+  'grep -qF "doesn'"'"'t mention #20 A new item, an item in \"Phase 1: One\" (#20 made " <<<"$out" && grep -qF "never a failure here" <<<"$out"'
+expect "no Horizon yet, and the index sync would rewrite, are warnings too" \
+  'grep -qF "#20 A new item (an item in \"Phase 1: One\") has no Horizon on the board (#20 made" <<<"$out" && grep -qF "docs/phases/README.md: written (since then:" <<<"$out"'
+expect "so is an issue closed since" 'grep -qF "#11 closed " <<<"$out"'
+expect "it says which main it checked against" 'grep -qF "when its branch'"'"'s main was taken (" <<<"$out"'
+
+# As local-ci runs it: the pull request merged with a main that has moved on (10:00), the head in
+# CI_SHA. What the branch was taken from is what counts.
+git checkout -q main
+mkdir -p src && printf 'other\n' >src/other.txt
+git add -A && at 2026-11-15T10:00:00Z commit -qm other
+git checkout -q --detach code && at 2026-11-15T10:05:00Z merge -q --no-edit main
+expect "in local-ci's merge, with CI_SHA, it still passes: the branch was taken before #20" \
+  'CI_SHA="$(git rev-parse code)" CI_BASE=main "$KIT" plan check --pr >/dev/null 2>&1'
+out="$("$KIT" plan check --pr main 2>&1)"; status=$?
+expect "without CI_SHA, the merge's own main (10:00) is newer than #20: it fails, as #20 was already there then" \
+  '[ $status -ne 0 ] && grep -qF "these were already so when the branch'"'"'s main was taken" <<<"$out" && grep -qF "doesn'"'"'t mention #20" <<<"$out"'
+
+git checkout -q -b plan main
+printf '\nMore on the first.\n' >>docs/phases/1-one.md
+git add -A && at 2026-11-15T10:10:00Z commit -qm page
+out="$("$KIT" plan check --pr 2>&1)"; status=$?
+expect "a pull request that changes a phase page still fails when the page leaves out an item of its phase" \
+  '[ $status -ne 0 ] && grep -qF "changes the plan (docs/phases/1-one.md): checked in full" <<<"$out" && grep -qF "doesn'"'"'t mention #20 A new item" <<<"$out"'
+git checkout -q main
+out="$("$KIT" plan check --pr 2>&1)"; status=$?
+expect "on main, --pr checks in full and fails as before" \
+  '[ $status -ne 0 ] && grep -qF "checked in full" <<<"$out" && grep -qF "doesn'"'"'t mention #20 A new item" <<<"$out"'
+gh_set 'i["21"] = {"id": "I21", "number": 21, "title": "An old item", "state": "OPEN", "milestone": "Phase 1: One", "parent": None, "labels": [], "body": "", "createdAt": "2026-11-15T08:00:00Z"}'
+git checkout -q code
+out="$("$KIT" plan check --pr 2>&1)"; status=$?
+expect "an item made before the branch was taken, that no page mentions, still fails a pull request" \
+  '[ $status -ne 0 ] && grep -qF "doesn'"'"'t mention #21 An old item" <<<"$out" && ! grep -qF "doesn'"'"'t mention #21 An old item, an item in \"Phase 1: One\" (#21" <<<"$out"'
+
 echo "--- plan: what to look at (#73)"
 # NetworkMonitor's plan before #644: pages and GitHub agree, and still it doesn't say what's next.
 W="$TMP/roadmap"

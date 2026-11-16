@@ -1,6 +1,6 @@
 # Phase 4: The plan at a glance
 
-**Milestone:** Phase 4: The plan at a glance · **Status:** Done
+**Milestone:** Phase 4: The plan at a glance · **Status:** Now
 
 **Goal:** every project's plan says at a glance what comes next and what waits on its owner, and
 `docs-kit plan` keeps it that way by itself, instead of a session putting it right by hand.
@@ -23,6 +23,18 @@ Then, on home-control's board (2026-11-15): an issue Kevin made in the Inbox, a 
 description with GitHub's **Create new issue**, was hidden at once, because the Inbox showed only
 drafts. "I want the Inbox to be seamless, like any issue I create … I just want to type the title
 and maybe description, and then it should be added to the list."
+
+Then, from home-control (2026-11-15): `plan check` read GitHub as it was at that moment, so as
+soon as one session opened a new item, every other open pull request's CI failed until that
+session's own plan pull request merged, even pull requests that touched no plan page. Finished
+work and its sessions waited up to 2 hours, several times in one day.
+
+## What's left
+
+- **A pull request fails the plan check only on what it can fix** (#101): in a pull request's
+  CI (`plan check --pr`), what other sessions changed on GitHub after the branch was taken is a
+  warning that names the issue and when; the plan's own pull requests, a check by hand and
+  `main` stay as strict as before.
 
 ## What shipped (15 Nov 2026)
 
