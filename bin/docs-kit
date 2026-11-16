@@ -990,7 +990,10 @@ def when(text) -> datetime.datetime | None:
 
 def shown(at: datetime.datetime | None) -> str:
     """A time as people read it, in this Mac's time zone: 15 Nov 10:12."""
-    return at.astimezone().strftime("%-d %b %H:%M") if at else "at a time GitHub didn't say"
+    if not at:
+        return "at a time GitHub didn't say"
+    at = at.astimezone()
+    return f"{at.day} {at:%b %H:%M}"
 
 
 def same_words(a: str, b: str) -> bool:
@@ -1652,9 +1655,8 @@ query($owner: String!, $name: String!, $board: String!, $number: Int!, $after: S
             at = when(i.get("touched"))
             if at and at > since:
                 issues.setdefault(i["number"], f"moved on the board {shown(at)}")
-        milestones = [f"the milestone \"{title}\" changed {shown(when(m.get('updatedAt')))}"
-                      for title, m in self.milestones.items()
-                      if when(m.get("updatedAt")) and when(m.get("updatedAt")) > since]
+        milestones = [f"the milestone \"{title}\" changed {shown(at)}" for title, m in self.milestones.items()
+                      if (at := when(m.get("updatedAt"))) and at > since]
         return issues, milestones
 
     @staticmethod
@@ -2533,7 +2535,10 @@ def pull_request(project: Project, p: Plan, rest: list[str]) -> dict | None:
     if not files:
         print(f"docs-kit plan: nothing here that isn't on {base} already: checked in full")
         return None
-    plan_files = [f for f in files if f in (p.index, p.doc, CONFIG) or f.startswith(p.folder + "/")]
+    config = pathlib.Path(CONFIG)
+    config = str(config.relative_to(project.root)) if config.is_absolute() and config.is_relative_to(project.root) \
+        else CONFIG
+    plan_files = [f for f in files if f in (p.index, p.doc, config) or f.startswith(p.folder + "/")]
     if plan_files:
         print(f"docs-kit plan: the pull request changes the plan ({', '.join(plan_files)}): checked in full")
         return None
@@ -2547,7 +2552,7 @@ def pull_request(project: Project, p: Plan, rest: list[str]) -> dict | None:
 def leave_to_others(p: Plan, lines: list[str], issues: dict[int, str], others: list[str]) -> tuple[list[str], list[str]]:
     """A pull request's own failures, and what came from GitHub changing after its branch was
     taken (#101). A line about issues (its #N, not the plan's or a phase's own) is GitHub's when
-    one of them changed since; a line about none (the index, a phase's description, a milestone)
+    every one of them changed since; a line about none (the index, a phase's description, a milestone)
     is GitHub's when anything did."""
     own, theirs = [], []
     changes = [f"#{n} {what}" for n, what in sorted(issues.items())] + others
@@ -2556,7 +2561,7 @@ def leave_to_others(p: Plan, lines: list[str], issues: dict[int, str], others: l
         about = [n for n in dict.fromkeys(int(m) for m in MENTION_HERE.findall(line))
                  if not (n in p.issues and p.structural(p.issues[n]))]
         changed = [n for n in about if n in issues]
-        if changed:
+        if about and len(changed) == len(about):
             theirs.append(f"{line} (#" + "; #".join(f"{n} {issues[n]}" for n in changed) + ")")
         elif not about and changes:
             theirs.append(f"{line} (since then: {lately})")
