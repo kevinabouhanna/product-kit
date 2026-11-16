@@ -1027,7 +1027,8 @@ issue, and run `docs-kit plan sync`.
         write(f"{folder}/assets/.keep", "")
 
     # Local CI: the checks, with the project's own copies of the tools.
-    jobs = (["python3 -I {c}/docs-kit plan check"] if "plan" in new else []) + \
+    # In a pull request (local-ci sets CI_PR), what other sessions changed on GitHub only warns (#101).
+    jobs = (["python3 -I {c}/docs-kit plan check ${{CI_PR:+--pr}}"] if "plan" in new else []) + \
         ["python3 -I {c}/docs-kit check \"${{CI_BASE:-origin/main}}\""]
     if lang is not None and lang.get("strings"):
         jobs.append("python3 -I {c}/lang-kit strings")

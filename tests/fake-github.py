@@ -7,6 +7,7 @@ time) and applies its writes (issues, sub-issues, milestones, labels, the board'
 items, values and views), logging each call to <state.json>.log. Beside the state file:
 `flaky` (a count of calls that fail first) and `signed-out` (gh isn't signed in)."""
 
+import datetime
 import json
 import os
 import pathlib
@@ -152,7 +153,8 @@ def issue_node(i: dict, query: str) -> dict:
     item = B["items"].get(str(i["number"]))
     project_item = None
     if item:
-        project_item = {"id": item["id"], "project": {"number": B["number"], "owner": {"login": B["owner"]}}}
+        project_item = {"id": item["id"], "updatedAt": item.get("updatedAt", "2026-11-01T00:00:00Z"),
+                        "project": {"number": B["number"], "owner": {"login": B["owner"]}}}
         for alias, name in re.findall(r"(v_\w+): fieldValueByName\(name: (\"(?:[^\"\\]|\\.)*\")\)", query):
             project_item[alias] = value_of(item, json.loads(name))
     parent = S["issues"].get(str(i["parent"])) if i.get("parent") else None
@@ -193,6 +195,20 @@ def read(query: str, fields: dict) -> dict:
             "structure": {"nodes": [issue_node(i, query) for i in sorted(S["issues"].values(), key=lambda i: i["number"])
                                     if set(i.get("labels", [])) & wanted]}},
             "repositoryOwner": {"__typename": B.get("type", "User"), "projectV2": board}}
+    if "filterBy: { since: $since }" in query:
+        # The issues changed since a time (#101): made, closed or updated after it, newest first.
+        note(f"read what changed since {fields['since']}")
+        def t(text):
+            return datetime.datetime.fromisoformat(text.replace("Z", "+00:00")) if text else None
+        since = t(fields["since"])
+        def at(i, key):
+            return i.get(key) or (i.get("createdAt", "2026-11-01T00:00:00Z") if key != "closedAt" else None)
+        def last(i):
+            return max(x for x in (at(i, "createdAt"), at(i, "updatedAt"), at(i, "closedAt")) if x)
+        changed = [i for i in S["issues"].values() if t(last(i)) > since]
+        return {"repository": {"issues": {"pageInfo": {"hasNextPage": False, "endCursor": None}, "nodes": [
+            {"number": i["number"], "createdAt": at(i, "createdAt"), "closedAt": at(i, "closedAt"),
+             "updatedAt": last(i)} for i in changed]}}}
     if "items(first: 100" in query:
         note("read the board's items")
         aliases = re.findall(r"(v_\w+): fieldValueByName\(name: (\"(?:[^\"\\]|\\.)*\")\)", query)

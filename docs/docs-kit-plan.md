@@ -50,6 +50,7 @@ or not.
 | `docs-kit plan sync [--dry-run]` | Makes GitHub follow the tree, and the generated files follow GitHub: see below. Prints every change in plain words; `--dry-run` only prints them. |
 | `docs-kit plan sync --views [--yes]` | The same, and the board's three views made or put right ([the views](#the-views)); with `--yes`, every other view is deleted. |
 | `docs-kit plan check` | Fails when anything `sync` would change, or anything it can't (below). One line when all is well (and one more when entries are waiting in the Inbox, which never fails it), then [what to look at](#what-to-look-at), which never fails it either. For CI. |
+| `docs-kit plan check --pr [<base>]` | The same, in a pull request's CI: unless the pull request changes the plan's files, what GitHub changed after its branch was taken is a warning, not a failure. [In a pull request](#in-a-pull-request). |
 | `docs-kit plan inbox [--json]` | What's waiting in the board's Inbox, oldest first: title, Kind (or "kind not set"), note, when and by whom, item id, and the issue's number for an issue made on the board. `plan ideas` is the same. [The Inbox](#the-inbox). |
 | `docs-kit plan inbox --take <item, or #N> --phase "<milestone>" …` | Takes one entry into the plan, with its spec: a draft becomes an issue; an issue made on the board is placed as it is. [The Inbox](#the-inbox). |
 | `docs-kit plan set <issue> [Field=value …] [--blocked-by N …]` | Moves an issue in the plan (its Order, say) or records what it waits for, then syncs. |
@@ -92,6 +93,39 @@ closes an item or a step, and never changes an open issue's Status. It reads Git
 - two root issues, two phase issues for one milestone, a phase issue under an item;
 - a field the config names that the board hasn't, or of the wrong kind (`init` adds the plan's
   own).
+
+### In a pull request
+
+`plan check` reads GitHub as it is now. In a pull request's CI that's a problem: as soon as any
+session opens a new item, every other open pull request's CI fails until that session's own plan
+pull request merges, even one that touches no plan page (home-control, 15 Nov 2026, #101). So a
+project's CI says it's checking a pull request, and the check then fails only on what that pull
+request can put right:
+
+```
+python3 -I scripts/docs-kit plan check ${CI_PR:+--pr}
+```
+
+`local-ci` sets `CI_PR` (the pull request's number), `CI_SHA` (its head) and `CI_BASE` (the
+branch it goes into) for every job; by hand, or on `main`, there's no `CI_PR`, so the check is
+the full one. With `--pr`:
+
+- **A pull request that changes the plan's files** (a page or the index in `plan.pages`, the
+  plan, `.product-kit.json`) is the plan's own: checked in full, exactly as by hand.
+- **Any other pull request** is checked against GitHub as it was when its branch's `main` was
+  taken: the fork, where its head (`CI_SHA`, or `HEAD`) meets `origin/<base>` (`CI_BASE`, or
+  the config's `branch`, `main`; or the `<base>` given). What only GitHub changing since then
+  explains is a warning, naming the issue and when (`#775 made 15 Nov 09:45`, `#768 closed …`,
+  `moved on the board …`): a new item no page mentions, with no Horizon, not under its phase
+  yet; an issue closed since; and anything about no issue in particular (the index, the plan's
+  or a phase's description, a milestone) while anything changed. The session that made the
+  change puts it right in its plan pull request, which is checked in full. What was already
+  wrong at the fork still fails: an item made before it that no page mentions is the plan's
+  `main` out of step, not someone's work in progress.
+- **On `main`** (nothing between the fork and the head) it's the full check.
+
+The fork's time is its commit's; an issue's are when it was made, closed or last changed on
+GitHub, and when its card on the board last changed.
 
 ### What to look at
 
@@ -316,7 +350,8 @@ both places and runs:
 4. `docs-kit plan check`, which passes, then the pages in a pull request.
 
 A new project: write `docs/PLAN.md` and the phase pages with the owner, add the `plan` section
-to `.product-kit.json`, run `docs-kit plan init`, and put `docs-kit plan check` in CI.
+to `.product-kit.json`, run `docs-kit plan init`, and put `docs-kit plan check ${CI_PR:+--pr}` in CI
+([in a pull request](#in-a-pull-request)).
 
 ## The config
 
