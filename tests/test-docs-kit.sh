@@ -682,8 +682,9 @@ expect "an Inbox of the drafts only gets the filter that shows an issue made on 
   'gh_true "[(v[\"filter\"], v[\"layout\"]) for v in b[\"views\"] if v[\"name\"] == \"Inbox\"] == [(\"is:open no:level no:milestone -is:pr\", \"TABLE_LAYOUT\")]" && grep -qF "the board'"'"'s view \"Inbox\": filter \"is:open no:level no:milestone -is:pr\" (was \"is:draft\"), so an issue made on the board shows there too" <<<"$out"'
 git add -A && git commit -qm plan
 out="$("$KIT" plan check 2>&1)"; status=$?
+looked=12 # 8 as before (#73 to #93), and the items in Now or Next without an Analysis or a Design line (#105)
 expect "the pages and GitHub agree, so check passes, and says what to look at" \
-  '[ $status -eq 0 ] && grep -q "agree" <<<"$out" && grep -qF "8 things to look at, so the plan says what'"'"'s next (never a failure):" <<<"$out"'
+  '[ $status -eq 0 ] && grep -q "agree" <<<"$out" && grep -qF "$looked things to look at, so the plan says what'"'"'s next (never a failure):" <<<"$out"'
 [ $status -eq 0 ] || echo "$out"
 expect "Now holds only the upkeep item: it names the next piece of work" \
   'grep -qF "Now holds only the upkeep item, #10, so the plan doesn'"'"'t say what'"'"'s next: move the next piece of work up (#11 Ad blocking that holds up, say: \`docs-kit plan set 11 Horizon=Now\`)" <<<"$out"'
@@ -700,9 +701,14 @@ expect "an item in Now or Next that doesn't say when it's done (#90)" \
 expect "a \"done when\" inside a sentence, in a code block, or with nothing under it isn't one" \
   'grep -qF "#15 Later: Lights doesn'"'"'t say when" <<<"$out" && grep -qF "#11 Ad blocking that holds up doesn'"'"'t say when" <<<"$out"'
 expect "but not the upkeep item, a step, or Later" '! grep -qE "#(10|14|17) .*doesn.t say when" <<<"$out"'
+expect "an item in Now or Next that doesn't show its analysis (#105)" \
+  'grep -qF "#11 Ad blocking that holds up doesn'"'"'t show its analysis: add an \"## Analysis\" section" <<<"$out"'
+expect "or doesn't say whether it needs a design (#105)" \
+  'grep -qF "#11 Ad blocking that holds up doesn'"'"'t say whether it needs a design: add a line \"**Design:** needed: artifact\"" <<<"$out"'
+expect "but not the upkeep item, a step, or Later, for those either" '! grep -qE "#(10|14|17) .*(show its analysis|needs a design)" <<<"$out"'
 expect "workflows on besides the plan's five; one that's off isn't counted (#93)" \
   'grep -qF "the board has workflows on besides the plan'"'"'s five (\"Auto-add to project\", \"Auto-close issue\"): \`docs-kit plan sync --views --yes\` deletes them" <<<"$out" && ! grep -q "Item reopened" <<<"$out"'
-expect "plan status says them too" '"$KIT" plan status | grep -q "8 things to look at"'
+expect "plan status says them too" '"$KIT" plan status | grep -q "$looked things to look at"'
 out="$("$KIT" plan sync --views 2>&1)"
 expect "sync --views makes the Roadmap, and only says it would delete the others" \
   'gh_true "[v[\"name\"] for v in b[\"views\"]] == [\"View 1\", \"Now · Next · Later\", \"Inbox\", \"My items\", \"Needs you\", \"Roadmap\"] and len(b[\"workflows\"]) == 8" && grep -qF "\"View 1\" isn'"'"'t one of the plan'"'"'s three: \`--views --yes\` deletes it" <<<"$out" && grep -qF "workflow \"Auto-close issue\" isn'"'"'t one of the plan'"'"'s five: \`--views --yes\` deletes it" <<<"$out"'
@@ -711,7 +717,7 @@ expect "with --yes, only Inbox, Needs you and Roadmap are left" \
   'gh_true "[v[\"name\"] for v in b[\"views\"]] == [\"Inbox\", \"Needs you\", \"Roadmap\"]"'
 expect "and the plan's five workflows, with the one that was off (#93)" \
   'gh_true "[w[\"name\"] for w in b[\"workflows\"]] == [\"Auto-add sub-issues to project\", \"Item added to project\", \"Item closed\", \"Item reopened\", \"Pull request linked to issue\", \"Pull request merged\"]"'
-gh_set 'i["11"]["state"] = "CLOSED"; i["14"]["parent"] = 3; i["15"]["title"] = "Brighter bulbs"; b["items"]["14"]["values"]["Horizon"] = "Now"; i["14"]["body"] = "## Why\n\nAds.\n\n> ### ✅ **Done** when\n>\n> - [ ] A page with ads shows none."; i["15"]["body"] = "**Why:** brighter.\r\n\r\n**Done when:**\r\n1. The bulbs are brighter."'
+gh_set 'i["11"]["state"] = "CLOSED"; i["14"]["parent"] = 3; i["15"]["title"] = "Brighter bulbs"; b["items"]["14"]["values"]["Horizon"] = "Now"; i["14"]["body"] = "## Why\n\nAds.\n\n> ### ✅ **Done** when\n>\n> - [ ] A page with ads shows none."; i["15"]["body"] = "**Why:** brighter.\r\n\r\n**Analysis:** the bulbs only. Questions: none.\r\n\r\n**Design:** not needed: no screen\r\n\r\n**Done when:**\r\n1. The bulbs are brighter."; i["14"]["body"] += "\n\n## Analysis\n\nThe filter lists.\n\n- **Design:** needed: live demo"'
 sed -i '' -e '/A closed bug/d' docs/phases/1-lights.md
 printf '# Phase 2: Ad blocking\n\n**Milestone:** Phase 2: Ad blocking that holds up · **Status:** Now\n\n- #14, Enhanced ad blocking.\n' >docs/phases/2-ads.md
 "$KIT" plan sync >/dev/null
@@ -719,6 +725,28 @@ out="$("$KIT" plan check 2>&1)"; status=$?
 expect "once each is put right, nothing to look at" '[ $status -eq 0 ] && ! grep -q "to look at" <<<"$out"'
 [ $status -eq 0 ] && ! grep -q "to look at" <<<"$out" || echo "$out"
 git add -A && git commit -qm "put right"
+
+says() { # <function> <body>: exit 0 when docs-kit's says_<function> is true of it
+  python3 -I - "$KIT" "$1" "$2" <<'PY'
+import importlib.util, sys
+from importlib.machinery import SourceFileLoader
+sys.dont_write_bytecode = True  # no __pycache__ in bin/: test-generic reads every file there
+loader = SourceFileLoader("dk", sys.argv[1]); spec = importlib.util.spec_from_loader("dk", loader)
+m = importlib.util.module_from_spec(spec); loader.exec_module(m)
+sys.exit(0 if getattr(m, "says_" + sys.argv[2])(sys.argv[3]) else 1)
+PY
+}
+nl=$'\n'
+expect "Analysis: a heading or a label with something under it (#105)" \
+  'says analysis "## Analysis${nl}Touches x." && says analysis "**Analysis:** the list only"'
+expect "not a sentence or a point that starts with the word" \
+  '! says analysis "**Done when:**${nl}1. Analysis view shows totals" && ! says analysis "Analysis of the logs is pending"'
+expect "nor an empty section followed by another label or a quoted heading" \
+  '! says analysis "## Analysis${nl}${nl}**Design:** not needed: x" && ! says analysis "## Analysis${nl}${nl}**Done when:**${nl}1. x" && ! says analysis "> ## Analysis${nl}> ## Done when${nl}> 1. x"'
+expect "Design: needed with its kind, or not needed with why; a label or a heading" \
+  'says design "**Design:** needed: artifact" && says design "- **Design:** needed: a live demo" && says design "Design: not needed: a bug fix" && says design "## Design${nl}${nl}Not needed: a tool"'
+expect "not needed or needed alone, or a sentence, isn't one" \
+  '! says design "**Design:** needed" && ! says design "Design: not needed" && ! says design "We need a design"'
 
 echo "--- plan: what waits on the owner (#74)"
 expect "the needs-you label, made once, in the owner's name from their GitHub profile" \

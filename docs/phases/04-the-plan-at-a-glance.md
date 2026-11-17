@@ -1,6 +1,6 @@
 # Phase 4: The plan at a glance
 
-**Milestone:** Phase 4: The plan at a glance · **Status:** Done
+**Milestone:** Phase 4: The plan at a glance · **Status:** Now
 
 **Goal:** every project's plan says at a glance what comes next and what waits on its owner, and
 `docs-kit plan` keeps it that way by itself, instead of a session putting it right by hand.
@@ -28,6 +28,11 @@ Then, from home-control (2026-11-15): `plan check` read GitHub as it was at that
 soon as one session opened a new item, every other open pull request's CI failed until that
 session's own plan pull request merged, even pull requests that touched no plan page. Finished
 work and its sessions waited up to 2 hours, several times in one day.
+
+Then, from the software factory review (2026-11-17, claude-parallel-sessions#181): every item
+shows its **Analysis** (what it touches, the options, the risks, the questions) and says whether
+it needs a **Design** (an Artifact or a live demo), before it's built, and `plan check` lists
+one that doesn't (#105).
 
 ## What shipped (15 Nov 2026)
 
