@@ -150,6 +150,9 @@ They're warnings: they never fail the check.
 - **A board that isn't the plan's three views:** views besides Inbox, Needs you and Roadmap
   (GitHub's starting ones, "Backlog", "Team items", "My items", or older ones of the plan's), or
   one of the three missing; or [workflows](#the-workflows) on besides the plan's five.
+- **An item that doesn't show its analysis, or say whether it needs a design** (#105): an open
+  item in Now or Next (the upkeep item aside) with no **Analysis** heading or label with something
+  under it, or no **Design:** line saying `needed` or `not needed` ([analysis and design](#analysis-and-design-before-its-built)).
 - **An item that doesn't say when it's done** (#90): an open item in Now or Next (the upkeep
   item aside) whose description has no **Done when**: a heading, a label or a line of its own
   that starts with those words (bold, quoted, ticked or with an emoji before them is fine), with
@@ -175,6 +178,40 @@ item gets [`needs-you`](#what-waits-on-the-owner) for it.
 The pull request that closes the item takes each point with the test or check that proves it,
 or says why none can (`3. A vote survives a reload: tests/votes.test.ts "keeps a vote after a
 reload"`). A point no test covers is either given one or said plainly, so the gap is seen.
+
+### Analysis and design, before it's built
+
+Every item shows its **Analysis** and says whether it needs **Design**, before anyone builds it
+(Kevin, 2026-11-17, claude-parallel-sessions#181: "You analyze the plan, and if you have any
+questions, you ask. You give the result of your analysis, and after the result, we design.
+Sometimes we might design; sometimes we might not. If it's a new feature, we have to design; if
+it's an adjustment to a feature, we have to design").
+
+- **Analysis**: a section of its own, in plain words: what it touches (the files, windows,
+  commands or other projects), the options and the one chosen, the risks, and **Questions**:
+  "none", or each question, which then waits on the owner as a
+  [`needs-you`](#what-waits-on-the-owner) step while the rest goes on. A bug's analysis quotes
+  the log lines that explain it.
+- **Design:** one line: `needed: artifact` (a page to look at, published as an Artifact),
+  `needed: live demo` (the real thing running: a VM recording, screenshots, a local preview), or
+  `not needed: <why>`. A new feature, or a change to what people see, needs one; a fix that
+  changes nothing on screen, a tool or a doc doesn't. When it's needed, the design's link goes on
+  the issue (in a comment that starts **Design**) before the build starts.
+
+```
+## Analysis
+Touches the list window and its store. Options: sort in the store (chosen: one place, tested) or
+in the view. Risk: an old store has no vote counts; they start at 0.
+Questions: none.
+
+**Design:** needed: artifact
+
+**Done when:**
+1. …
+```
+
+`plan check` lists an open item in Now or Next (the upkeep item aside) with no Analysis section
+or no Design line, as it does one without **Done when**. It never fails on them.
 
 ### The views
 
@@ -293,9 +330,11 @@ session:
 2. handles each by its kind:
    - **Bug:** reads the app's logs first, quotes the lines that explain it in the issue, and
      places it by severity: a bug that breaks daily use goes ahead of features (Now, early in
-     the Order); its **Done when** says what shows it's fixed;
-   - **Feature:** a spec, in plain words: **Why** (the owner's words quoted), **What**, **Done
-     when** ([numbered points](#when-an-item-is-done-90));
+     the Order); its **Analysis** is those lines and what they show, its **Design:** usually
+     `not needed`, and its **Done when** says what shows it's fixed;
+   - **Feature:** a spec, in plain words: **Why** (the owner's words quoted), **What**, its
+     **Analysis** and a **Design:** line ([analysis and design](#analysis-and-design-before-its-built)),
+     **Done when** ([numbered points](#when-an-item-is-done-90));
    - **Idea** or **Research:** a research or decision issue, not a build: what to find out, and
      how the decision will be made;
 3. fits every entry into the plan in the most logical order:

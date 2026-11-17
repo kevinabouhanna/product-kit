@@ -56,7 +56,7 @@ import sys
 import time
 import unicodedata
 
-VERSION = "2.15.0"
+VERSION = "2.16.0"
 # The config: product-kit's, shared with lang-kit, or docs-kit's own from before.
 CONFIGS = (".product-kit.json", ".docs-kit.json")
 CONFIG = CONFIGS[0]
@@ -866,6 +866,39 @@ DONE_MARK = re.compile(r"~~|✓|✅|\b(done|shipped|finished|merged|released|bui
 DONE_WHEN = re.compile(r"done[\s*_-]+when\b[\s*_:]*(.*)$", re.I)
 LINE_LEAD = re.compile(r"^(\s|>|#|[-*+](?=\s)|\d+[.)](?=\s)|\[[ xX]?\]|<[^>]*>|[*_~`]|[^\w\s])*")
 FENCED = re.compile(r"^\s*(```|~~~).*?^\s*\1[^\n]*$", re.S | re.M)
+# An item's Analysis and Design (claude-parallel-sessions#181, #105): an "Analysis" heading or label
+# with something said after it, and a "Design:" line saying needed or not needed.
+ANALYSIS = re.compile(r"analysis\b[\s*_:]*(.*)$", re.I)
+DESIGN = re.compile(r"design[\s*_]*:[\s*_]*(not\s+)?needed\b", re.I)
+
+
+def _says(body: str, label: re.Pattern) -> bool:
+    """Whether a line of the description, outside code, starts with the label (once its lead is taken
+    off) and has something said after it, on that line or the lines under it before the next heading."""
+    lines = FENCED.sub("", body.lstrip("\ufeff")).split("\n")
+    for k, line in enumerate(lines):
+        m = label.match(LINE_LEAD.sub("", line, count=1))
+        if not m:
+            continue
+        if re.search(r"\w", m.group(1)):
+            return True
+        for after in lines[k + 1:]:
+            if re.match(r"\s*#{1,6}\s", after):
+                break
+            if re.search(r"\w", after):
+                return True
+    return False
+
+
+def says_analysis(body: str) -> bool:
+    """Whether an item shows its analysis (#105): an Analysis heading or label with something under it."""
+    return _says(body, ANALYSIS)
+
+
+def says_design(body: str) -> bool:
+    """Whether an item says if it needs a design (#105): a "Design: needed …" or "not needed …" line."""
+    text = FENCED.sub("", body.lstrip("\ufeff"))
+    return any(DESIGN.match(LINE_LEAD.sub("", line, count=1)) for line in text.split("\n"))
 
 
 def says_done_when(body: str) -> bool:
@@ -1725,6 +1758,16 @@ query($owner: String!, $name: String!, $board: String!, $number: Int!, $after: S
                     found.append(f"#{i['number']} {i['title']} doesn't say when it's done: add a numbered "
                                  "\"**Done when:**\" list to its description, each point something a test or a "
                                  "check can show (#90)")
+            for i in plans:  # the same items show their analysis and say whether they need design (#105)
+                if i["values"].get("horizon") not in self.horizons[:2] or i["number"] == upkeep:
+                    continue
+                if not says_analysis(i["body"]):
+                    found.append(f"#{i['number']} {i['title']} doesn't show its analysis: add an \"## Analysis\" "
+                                 "section (what it touches, the options and the one chosen, the risks, and "
+                                 "Questions: none, or each one, waiting on the owner) (#105)")
+                if not says_design(i["body"]):
+                    found.append(f"#{i['number']} {i['title']} doesn't say whether it needs a design: add a line "
+                                 "\"**Design:** needed: artifact\", \"needed: live demo\" or \"not needed: <why>\" (#105)")
         listed = {}
         for page in pages.values():
             milestone = page["milestone"]
