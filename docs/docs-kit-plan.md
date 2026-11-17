@@ -194,7 +194,7 @@ it's an adjustment to a feature, we have to design").
   the log lines that explain it.
 - **Design:** one line: `needed: artifact` (a page to look at, published as an Artifact),
   `needed: live demo` (the real thing running: a VM recording, screenshots, a local preview), or
-  `not needed: <why>`. A new feature, or a change to what people see, needs one; a fix that
+  `not needed: <why>` (or a **Design** heading with that on the line under it). A new feature, or a change to what people see, needs one; a fix that
   changes nothing on screen, a tool or a doc doesn't. When it's needed, the design's link goes on
   the issue (in a comment that starts **Design**) before the build starts.
 
