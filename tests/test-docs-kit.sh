@@ -730,6 +730,7 @@ says() { # <function> <body>: exit 0 when docs-kit's says_<function> is true of 
   python3 -I - "$KIT" "$1" "$2" <<'PY'
 import importlib.util, sys
 from importlib.machinery import SourceFileLoader
+sys.dont_write_bytecode = True  # no __pycache__ in bin/: test-generic reads every file there
 loader = SourceFileLoader("dk", sys.argv[1]); spec = importlib.util.spec_from_loader("dk", loader)
 m = importlib.util.module_from_spec(spec); loader.exec_module(m)
 sys.exit(0 if getattr(m, "says_" + sys.argv[2])(sys.argv[3]) else 1)
