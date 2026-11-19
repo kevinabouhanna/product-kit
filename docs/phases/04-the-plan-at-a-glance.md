@@ -34,6 +34,14 @@ shows its **Analysis** (what it touches, the options, the risks, the questions) 
 it needs a **Design** (an Artifact or a live demo), before it's built, and `plan check` lists
 one that doesn't (#105).
 
+Then, from NetworkMonitor #660 (Inbox, scanned 2026-11-19): a bug taken into its finished
+phase 1 reopened the phase issue but not the milestone, so the plan kept calling the phase Done
+until the milestone was reopened by hand. Sync reopens the milestone too (#108).
+
+And from claude-parallel-sessions (2026-11-18): `plan check` took an `## Analysis` section whose
+first line is a bold label (`**Why it's blank:** …`) for empty, and said the item shows no
+analysis (#107).
+
 ## What shipped (15 Nov 2026)
 
 - **A pull request fails the plan check only on what it can fix** (#101, tools 2.15.0, 16 Nov):
