@@ -743,6 +743,10 @@ expect "not a sentence or a point that starts with the word" \
   '! says analysis "**Done when:**${nl}1. Analysis view shows totals" && ! says analysis "Analysis of the logs is pending"'
 expect "nor an empty section followed by another label or a quoted heading" \
   '! says analysis "## Analysis${nl}${nl}**Design:** not needed: x" && ! says analysis "## Analysis${nl}${nl}**Done when:**${nl}1. x" && ! says analysis "> ## Analysis${nl}> ## Done when${nl}> 1. x"'
+expect "an Analysis heading whose first line is a bold label of its own still shows it (#107)" \
+  'says analysis "## Analysis${nl}${nl}**Why it'"'"'s blank:** the cache is cold." && says analysis "> ## Analysis${nl}> **Found so far (19 Nov):** two of three."'
+expect "but an Analysis label followed straight by another part's label is still empty (#107)" \
+  '! says analysis "**Analysis:**${nl}**Design:** not needed: x" && ! says analysis "**Analysis:**${nl}${nl}**Why:** x"'
 expect "Design: needed with its kind, or not needed with why; a label or a heading" \
   'says design "**Design:** needed: artifact" && says design "- **Design:** needed: a live demo" && says design "Design: not needed: a bug fix" && says design "## Design${nl}${nl}Not needed: a tool"'
 expect "not needed or needed alone, or a sentence, isn't one" \

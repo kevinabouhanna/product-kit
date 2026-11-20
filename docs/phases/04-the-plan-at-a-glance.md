@@ -44,6 +44,9 @@ analysis (#107).
 
 ## What shipped (15 Nov 2026)
 
+- **An Analysis heading may start with a bold label** (#107, tools 2.16.1, 21 Nov): under an
+  `## Analysis` heading, a label of its own (`**Why it's blank:** …`) no longer ends the section;
+  it ends at the next heading or at another part's label (`**Design:**`, `**Done when:**`).
 - **A pull request fails the plan check only on what it can fix** (#101, tools 2.15.0, 16 Nov):
   in a pull request's CI, `plan check ${CI_PR:+--pr}` checks a pull request that changes no
   plan file against GitHub as it was when its branch's `main` was taken; what other sessions
