@@ -42,6 +42,17 @@ And from claude-parallel-sessions (2026-11-18): `plan check` took an `## Analysi
 first line is a bold label (`**Why it's blank:** …`) for empty, and said the item shows no
 analysis (#107).
 
+Then, from the Inbox (scanned 2026-11-23):
+
+- **A plan in files only** (#110, Now): for client work, where the team keeps its own board,
+  the same pages with `ROADMAP.md` and `MILESTONES.md` written from them, GitHub only read and
+  never written, and the config kept outside the repo. Kevin, 19 Nov: "they cannot change the
+  GitHub projects … That's the only thing I don't want to change."
+- **`plan check --pr` puts right what sync fixes alone** (#113, Later): a gap from home-control,
+  where half its failed CI runs were the plan check failing on what `plan sync` fixes on GitHub by
+  itself (home-control#885). Handled there by a script of its own; it moves here when a second
+  project needs it.
+
 ## What shipped (15 Nov 2026)
 
 - **An Analysis heading may start with a bold label** (#107, tools 2.16.1, 21 Nov): under an
