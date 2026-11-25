@@ -55,6 +55,9 @@ Then, from the Inbox (scanned 2026-11-23):
 
 ## What shipped (15 Nov 2026)
 
+- **Work in a finished phase reopens its milestone too** (#108, tools 2.16.2, 25 Nov): an entry
+  taken into a finished phase, or an issue reopened there, and `plan sync` reopens the milestone
+  with the phase issue, so the page and the index stop saying Done. Closing one stays the owner's.
 - **An Analysis heading may start with a bold label** (#107, tools 2.16.1, 21 Nov): under an
   `## Analysis` heading, a label of its own (`**Why it's blank:** …`) no longer ends the section;
   it ends at the next heading or at another part's label (`**Design:**`, `**Done when:**`).
