@@ -130,7 +130,8 @@ that marks a spot for one:
 ```
 
 A value is the same in every language, or one per language; it's written as it is, or read
-from where it lives (`from`): `tag` (the latest, without its `v`), `plist` (`file`, and `key`,
+from where it lives (`from`): `tag` (the last release's, without its `v`: never a beta's, as
+`v1.2.0-beta.1`, nor a tag that isn't a version), `plist` (`file`, and `key`,
 `CFBundleShortVersionString` by default), `file`, or `command` (`run`, what it prints). A list
 is a Markdown list in a page and `<li>` items on the site.
 
