@@ -443,6 +443,8 @@ expect "a closed milestone with nothing open stays closed, its phase under Done"
   'milestone_is "Phase 0: Start" CLOSED && milestone_is "Phase 3: Sub" CLOSED && under_done'
 gh_set 'i["5"]["state"] = "OPEN"; b["items"]["5"]["values"].update(Horizon="Next", Order=11)'
 cp "$G/github.json" "$G/reopened.json"
+expect "plan status and plan index no longer call it Done either" \
+  '"$KIT" plan status | grep -qF "0-start.md: **Milestone:** Phase 0: Start · **Status:** Next" && ! "$KIT" plan index --check >/dev/null'
 out="$("$KIT" plan sync --dry-run 2>&1)"
 expect "an issue reopened in it: --dry-run says the milestone is reopened, and only says it" \
   'grep -qF "milestone \"Phase 0: Start\": reopened, it has open work" <<<"$out" && cmp -s "$G/github.json" "$G/reopened.json" && under_done'
@@ -451,10 +453,16 @@ out="$("$KIT" plan sync 2>&1)"
 expect "sync reopens the milestone and the phase issue, and says so" \
   'milestone_is "Phase 0: Start" OPEN && gh_true "i[\"$p0\"][\"state\"] == \"OPEN\"" && grep -qF "milestone \"Phase 0: Start\": reopened, it has open work" <<<"$out"'
 expect "the page's Status is the issue's Horizon" 'grep -qF "**Status:** Next" docs/phases/0-start.md'
-expect "and again, it has nothing more to say about it" '! "$KIT" plan sync 2>&1 | grep -q "reopened"'
+out="$("$KIT" plan sync 2>&1)"
+expect "and again changes nothing" 'grep -q "nothing to change" <<<"$out"'
 gh_set 'i["5"]["state"] = "CLOSED"'
 "$KIT" plan sync >/dev/null 2>&1
 expect "sync never closes a milestone: that's the owner's step" 'milestone_is "Phase 0: Start" OPEN'
+cp "$G/before.json" "$G/github.json" && rm -rf docs && cp -R "$TMP/docs-before" docs
+gh_set 'i["5"]["state"] = "OPEN"'
+"$KIT" plan sync >/dev/null 2>&1
+expect "work with no Horizon reopens the milestone too, and check asks for its Horizon" \
+  'milestone_is "Phase 0: Start" OPEN && plan_fails "#5 Long done (an item in \"Phase 0: Start\") has no Horizon"'
 cp "$G/before.json" "$G/github.json" && rm -rf docs && cp -R "$TMP/docs-before" docs
 gh_set 'b["drafts"]["PVTI_d3"] = {"title": "A late bug", "body": "It broke again.", "createdAt": "2026-11-16T09:00:00Z", "by": "kevin", "values": {"Kind": "Bug"}}'
 out="$("$KIT" plan inbox --take PVTI_d3 --phase "Phase 0: Start" --horizon Later --order 12 2>&1)"

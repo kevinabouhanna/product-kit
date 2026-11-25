@@ -1394,9 +1394,9 @@ query($owner: String!, $name: String!, $board: String!, $number: Int!, $after: S
     def status(self, milestone: str) -> tuple[str | None, str]:
         """The Status a milestone's page should have, and why."""
         m = self.milestones[milestone]
-        if m["state"] == "CLOSED":
-            return "Done", "its milestone is closed"
         issues = self.open_in(milestone)
+        if m["state"] == "CLOSED" and not issues:
+            return "Done", "its milestone is closed"
         if not issues:
             return "Done", "its milestone has nothing open"
         placed = [i for i in issues if i["values"].get("horizon") in self.horizons]
