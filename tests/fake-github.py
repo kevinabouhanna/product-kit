@@ -347,6 +347,11 @@ def rest(method: str, path: str, body: dict) -> dict:
         S["milestones"].append(m)
         save()
         return {"node_id": m["id"], "number": number}
+    if method == "PATCH" and re.search(r"/milestones/\d+$", path):
+        m = next(m for m in S["milestones"] if m["number"] == int(path.rsplit("/", 1)[1]))
+        m["state"] = {"open": "OPEN", "closed": "CLOSED"}[body["state"]]
+        save()
+        return {"node_id": m["id"], "number": m["number"], "state": body["state"]}
     if path.endswith("/views"):
         view = {"id": new_id("PVTV_"), "number": len(B["views"]) + 1, "name": body["name"],
                 "filter": body.get("filter"), "layout": body["layout"].upper() + "_LAYOUT", "sort_by": body.get("sort_by"),

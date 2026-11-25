@@ -29,8 +29,8 @@ earliest, its Order their lowest, its Start and Target their earliest and latest
 are Done; an open issue's Status (Todo, In Progress) is left as it is. Everything in the plan is
 on the board, and everything under a phase is in that phase's milestone.
 
-A phase's **Status**, on its page's line, is Done when its milestone is closed or has nothing
-open, otherwise the earliest Horizon among its open issues:
+A phase's **Status**, on its page's line, is Done when its milestone has nothing open in
+it, otherwise the earliest Horizon among its open issues:
 
 ```
 # Phase 1: Lights
@@ -64,7 +64,10 @@ or not.
 2. Puts each phase issue under the plan, in its milestone.
 3. Puts each open issue that isn't under a phase under its milestone's phase issue (an open
    step goes with its top-most parent).
-4. Puts everything under a phase in that phase's milestone, and on the board.
+4. Puts everything under a phase in that phase's milestone, and on the board. Reopens a phase's
+   closed milestone that has open work in it (an entry taken into a finished phase, an issue
+   reopened there); its page and the index stop saying Done once that work has a Horizon, which
+   `plan check` asks for. Closing a milestone stays the owner's step.
 5. Sets each Level; moves what [waits on the owner](#what-waits-on-the-owner) to Later, and
    back when its label comes off; copies items' values to their steps; sets each phase's values
    from its items.
