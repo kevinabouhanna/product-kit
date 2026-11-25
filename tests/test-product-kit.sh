@@ -204,6 +204,27 @@ expect "then every spot is current" 'f | grep -q "all 6 spots are current"'
 echo '<!-- product-kit: price -->Free<!-- /product-kit -->' >>"$FA/app/README.md"
 expect "a spot naming a fact the config hasn't is named" 'f | grep -q "names a fact the config hasn.t: .*README.md: price"'
 
+echo "--- the last release's tag, never a beta's nor a data tag (#115)"
+RT="$TMP/reltag"; mkdir -p "$RT"; git -C "$RT" init -q
+cat >"$RT/.product-kit.json" <<'EOF'
+{"repo": "me/rt", "languages": {"fr": {"name": "Français"}}, "facts": {"version": {"from": "tag"}}}
+EOF
+echo 'Version <!-- product-kit: version -->0<!-- /product-kit -->' >"$RT/README.md"; echo "# Rt" >"$RT/README.fr.md"
+git -C "$RT" add -A && git -C "$RT" commit -q -m start
+rt() { (cd "$RT" && python3 -I "$KIT" "$@" 2>&1) || true; }
+git -C "$RT" tag -a -m beta v1.1.0-beta.1
+expect "with only a beta, there's no release to read" 'rt facts | grep -q "no release.s tag" && rt notes | grep -q "no release.s tag"'
+# The beta's tag has a message and the release's doesn't: git describe prefers the first.
+git -C "$RT" tag v1.1.0
+expect "the beta promoted on its own commit: the facts read the release" 'rt facts | grep -q "should be .1.1.0.$"'
+git -C "$RT" commit -q --allow-empty -m data && git -C "$RT" tag -a -m data geodata && git -C "$RT" tag beta-updates
+git -C "$RT" commit -q --allow-empty -m next && git -C "$RT" tag -a -m beta v1.2.0-beta.1 && git -C "$RT" tag -a -m beta v1.2b1
+expect "and still do after a data tag and the next beta" 'rt facts | grep -q "should be .1.1.0.$"'
+expect "status --release names the release" 'rt status --release --base HEAD | grep -q "lang-kit review v1.1.0[^-]"'
+expect "notes start from the release" 'rt notes | grep -q "^notes: since v1.1.0, "'
+git -C "$RT" tag v2
+expect "a release can be one number" 'rt facts | grep -q "should be .2.$"'
+
 echo "--- init: a new project in one command (#42)"
 # A tiny Mac app, the Swift package way: nothing of product-kit's yet.
 NEWAPP="$TMP/newapp"; mkdir -p "$NEWAPP/Sources/Tally"; git -C "$NEWAPP" init -q

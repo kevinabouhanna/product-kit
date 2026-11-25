@@ -109,6 +109,9 @@ Later: videos, store pages, web views, the proof.
 - #46 Apps built on web views (home-control), and the website itself checked.
 - #47 Prove it: a new project from nothing, and every project current.
 
+After them: #115, the last release's tag: never a beta's, nor a data tag (25 Nov 2026), before
+NetworkMonitor's first promoted beta.
+
 ## Still open
 
 - **#86 The iPhone pictures' test fails now and then** (15 Nov): two of its checks failed on one
