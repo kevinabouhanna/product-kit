@@ -116,6 +116,10 @@ NetworkMonitor's first promoted beta.
 
 - **#86 The iPhone pictures' test fails now and then** (15 Nov): two of its checks failed on one
   CI run and passed on the next, with nothing changed.
+- **#118 `status --release` and `notes`, on a release's own commit** (Bug, Next, Order 17.6; a gap from
+  NetworkMonitor, Inbox, scanned 25 Nov): run again once the release is tagged, they start from that
+  release, so the native review is empty and `notes` says 0 changes. Fixed, they'd start from the
+  release before it; `facts` keeps reading the commit's own.
 
 ## Not in this phase
 
