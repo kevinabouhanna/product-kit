@@ -8,7 +8,6 @@ Each phase is a milestone on GitHub and a page here; each plan is an issue, in t
 | Order | Plan | Phase |
 |---|---|---|
 | 2 | #108 Taking an entry into a finished phase reopens its milestone too | [Phase 4: The plan at a glance](04-the-plan-at-a-glance.md) |
-| 2.5 | #115 The last release's tag: never a beta's, nor a data tag | [Phase 2: Any Mac or iPhone project](02-any-mac-or-iphone-project.md) |
 | 3 | #110 A plan in files only: PLAN.md, ROADMAP.md, MILESTONES.md, nothing written to GitHub | [Phase 4: The plan at a glance](04-the-plan-at-a-glance.md) |
 | 17.5 | #86 test-ios fails now and then: "more rows and a new time change nothing" | [Phase 2: Any Mac or iPhone project](02-any-mac-or-iphone-project.md) |
 
