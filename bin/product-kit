@@ -670,10 +670,14 @@ def main_checkout(root: pathlib.Path) -> pathlib.Path:
 
 
 def last_tag(root: pathlib.Path) -> str | None:
-    """The last release's tag: a version (v1.2.3, 1.2), never a beta's (v1.2.3-beta.1), which can
-    be on the release's own commit, nor a tag for something else (geodata) (#115)."""
-    r = subprocess.run(["git", "describe", "--tags", "--abbrev=0", "--match", "v[0-9]*.[0-9]*",
-                        "--match", "[0-9]*.[0-9]*", "--exclude", "*-*"], cwd=root, capture_output=True, text=True)
+    """The last release's tag: numbers only (v1.2.3, 1.2, v2), never a beta's (v1.2.3-beta.1,
+    v1.2b1), which can be on the release's own commit, nor a tag for something else (geodata) (#115)."""
+    tags = subprocess.run(["git", "tag", "--merged", "HEAD"], cwd=root, capture_output=True, text=True).stdout.split()
+    releases = [t for t in tags if re.fullmatch(r"v?\d+(\.\d+)*", t)]
+    if not releases:
+        return None
+    r = subprocess.run(["git", "describe", "--tags", "--abbrev=0", *(f"--match={t}" for t in releases)],
+                       cwd=root, capture_output=True, text=True)
     return r.stdout.strip() or None
 
 
@@ -1140,7 +1144,7 @@ def notes(args: list[str]) -> int:
         return 0
     since = next((a for a in args if not a.startswith("--")), None) or last_tag(root)
     if not since:
-        fail("usage: product-kit notes [<the last release's tag>]: there's no tag to start from")
+        fail("usage: product-kit notes [<the last release's tag>]: there's no release's tag (v1.2.3) to start from")
     repo = config.get("repo") or repo_of(type("P", (), {"config": {}, "root": root})())
     numbers = []
     for line in git("log", f"{since}..HEAD", "--format=%s", cwd=root).splitlines():
