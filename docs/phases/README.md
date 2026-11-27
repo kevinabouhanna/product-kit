@@ -14,6 +14,7 @@ Each phase is a milestone on GitHub and a page here; each plan is an issue, in t
 
 | Order | Plan | Phase |
 |---|---|---|
+| 4 | #122 A roadmap for users, written from the plan, in the README and on the website, published once the owner approves (gap from NetworkMonitor) | [Phase 4: The plan at a glance](04-the-plan-at-a-glance.md) |
 | 17.6 | #118 status --release and notes, on a release's own commit, start from the release before it (gap from NetworkMonitor) | [Phase 2: Any Mac or iPhone project](02-any-mac-or-iphone-project.md) |
 
 ## Later
