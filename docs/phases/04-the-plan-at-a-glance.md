@@ -53,6 +53,16 @@ Then, from the Inbox (scanned 2026-11-23):
   itself (home-control#885). Handled there by a script of its own; it moves here when a second
   project needs it.
 
+Then, from the Inbox (scanned 2026-11-27), a gap from NetworkMonitor (NetworkMonitor#755):
+
+- **A roadmap for users** (#122, Next, Order 4): a few lines of what's coming, in the users'
+  words, grouped as Now, Next and Later with no dates, written from the plan's items that have a
+  `**For users:**` line, into the README and the website in every language; a change opens a
+  pull request that waits on the owner's approval. Kevin, 25 Nov: "we should have a
+  self-updating roadmap, and this should be part of the Product kit repository … High-level
+  roadmap points, basically." It comes right after #110, which reads the same items for
+  `docs/ROADMAP.md`.
+
 ## What shipped (15 Nov 2026)
 
 - **Work in a finished phase reopens its milestone too** (#108, tools 2.16.2, 25 Nov): an entry
